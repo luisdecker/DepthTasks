@@ -23,3 +23,4 @@ class Model(LightningModule):
         # tasks
         loss = self.compute_loss(_y, y)
         self.log("training_loss", loss)
+        return loss
