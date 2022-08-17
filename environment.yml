@@ -1,0 +1,14 @@
+name: tasks
+channels:
+  - defaults
+  - conda-forge
+  - pytorch
+dependencies:
+  - python=3.8
+  - pytorch
+  - pytorch-lightning
+  - pylint
+  - black
+  - flake8
+  - torchmetrics
+prefix: /home/decker/conda/envs/tasks
