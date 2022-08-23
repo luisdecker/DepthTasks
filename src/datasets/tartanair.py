@@ -43,7 +43,7 @@ from torch.utils.data import DataLoader
 "Utility Functions"
 
 
-def validate_folder(folder_path):
+def is_valid_folder(folder_path):
     """Validates if the folder contains the expected subfolders"""
 
     # Get subfolders
@@ -53,7 +53,51 @@ def validate_folder(folder_path):
     # Verify if subfolders exists
     expected_subfolders = ["Easy", "Hard"]
     return all([sf in subfolders for sf in expected_subfolders])
-    
+
+
+def get_scenes_paths(dataset_path):
+    "Get the path of all the scene folders found in the dataset"
+
+    # Verify if dataset_path has a / in the end
+    dataset_path = (
+        dataset_path + "/" if not dataset_path.endswith("/") else dataset_path
+    )
+
+    # Get all folder candidate in dataset root
+    folders = [x for x in glob(dataset_path + "*") if not x[:-3].endswith(".")]
+
+    # Filter no-folders
+    folders = [f for f in folders if os.path.isdir(f)]
+
+    # Validate if is a scene folder
+    folders = [f for f in folders if is_valid_folder(f)]
+
+    print(
+        "[Tartanair][get_scenes_paths] Found the following scenes in tartanair folder:",
+        [f.split("/")[-1] for f in folders],
+    )
+
+    return folders
+
+
+def get_path_ids(path):
+    "Get the id of all the available files in a path"
+    all_depths = glob(os.path.join(path, "depth_left") + "/*")
+    return [x.split("/")[-1].split("_")[0] for x in all_depths]
+
+
+def get_data_from_id(id, path):
+    "Get the path from all the data from a id"
+
+    return {
+        "depth_l": os.path.join(path, "depth_left", f"{id}_left_depth.npy"),
+        "depth_r": os.path.join(path, "depth_right", f"{id}_right_depth.npy"),
+        "image_l": os.path.join(path, "image_left", f"{id}_left.npy"),
+        "image_r": os.path.join(path, "image_right", f"{id}_right.npy"),
+        "seg_l": os.path.join(path, "seg_left", f"{id}_left_seg.npy"),
+        "seg_r": os.path.join(path, "seg_right", f"{id}_right_seg.npy"),
+    }
+
 
 def gen_file_list(dataset_path):
     """
@@ -69,18 +113,30 @@ def gen_file_list(dataset_path):
         - Segmentation R
     """
 
-    # Verify if dataset_path has a / in the end
-    dataset_path = (
-        dataset_path + "/" if not dataset_path.endswith("/") else dataset_path
-    )
+    file_list = []
+    scene_folders = get_scenes_paths(dataset_path)
+    for scene in scene_folders:
+        scene_name = scene.split("/")[-1]
 
-    # Get all folder candidate in dataset root
-    folders = [x for x in glob(dataset_path + "*") if not x[:-3].endswith(".")]
+        for difficulty in ["Easy", "Hard"]:
 
-    # Filter no-folders
-    folders = [f for f in folders if os.path.isdir(f)]
+            # Get all the available paths
+            paths_root = os.path.join(scene, difficulty)
+            paths = glob(paths_root + "/*")
 
-    # Validate if is a scene folder
+            for path in paths:
+
+                # Get available image ids
+                ids = get_path_ids(path)
+                for id in ids:
+                    # get all the data for this id
+                    all_paths_id = get_data_from_id(id, path)
+
+                    # add extra info
+                    all_paths_id["scene"] = scene_name
+
+                    file_list.append(all_paths_id)
+    return file_list
 
 
 class TartanAir:
