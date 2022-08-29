@@ -3,6 +3,9 @@
 from glob import glob
 import os
 
+import numpy as np
+from PIL import Image
+
 from torch.utils.data import DataLoader
 
 # fmt: off
@@ -40,7 +43,7 @@ from torch.utils.data import DataLoader
 
 
 # fmt: on
-"Utility Functions"
+"Utility Functions_____________________________________________________________"
 
 
 def is_valid_folder(folder_path):
@@ -92,8 +95,8 @@ def get_data_from_id(id, path):
     return {
         "depth_l": os.path.join(path, "depth_left", f"{id}_left_depth.npy"),
         "depth_r": os.path.join(path, "depth_right", f"{id}_right_depth.npy"),
-        "image_l": os.path.join(path, "image_left", f"{id}_left.npy"),
-        "image_r": os.path.join(path, "image_right", f"{id}_right.npy"),
+        "image_l": os.path.join(path, "image_left", f"{id}_left.png"),
+        "image_r": os.path.join(path, "image_right", f"{id}_right.png"),
         "seg_l": os.path.join(path, "seg_left", f"{id}_left_seg.npy"),
         "seg_r": os.path.join(path, "seg_right", f"{id}_right_seg.npy"),
     }
@@ -139,10 +142,63 @@ def gen_file_list(dataset_path):
     return file_list
 
 
+# Tartanair Loader _____________________________________________________________
+
+
 class TartanAir:
     "Dataloader for tartanair dataset"
 
-    def __init__(self, dataset_root, file_list_path):
+    def __init__(self, dataset_root, target_size=None):
         """"""
         self.dataset_root = dataset_root
-        self.file_list_path = file_list_path
+        self.file_list = gen_file_list(self.dataset_root)
+        self.target_size = target_size
+
+    def __len__(self):
+        return len(self.file_list)
+
+    @staticmethod
+    def _load_image(image_path, resize_shape=None):
+        """"""
+        # Loads image
+        assert os.path.isfile(image_path), f"{image_path} is not a file!"
+        img = Image.open(image_path)
+
+        # Resizes if shape is provided
+        if resize_shape:
+            img = img.resize(resize_shape, resample=Image.BICUBIC)
+
+        return img
+
+    @staticmethod
+    def _load_npz(filepath, resize_shape=None):
+
+        assert os.path.isfile(filepath), f"{filepath} is not a file!"
+        data = np.load(filepath)
+        data_img = Image.fromarray(data).convert("F")
+
+        if resize_shape:
+            data_img = data_img.resize(resize_shape, resample=Image.BICUBIC)
+
+        return data_img
+
+    def __getitem__(self, idx):
+
+        data_paths = self.file_list[idx]
+        return [
+            TartanAir._load_image(data_paths["image_l"], self.target_size),
+            TartanAir._load_image(data_paths["image_r"], self.target_size),
+            TartanAir._load_npz(data_paths["depth_l"], self.target_size),
+            TartanAir._load_npz(data_paths["depth_r"], self.target_size),
+            TartanAir._load_npz(data_paths["seg_l"], self.target_size),
+            TartanAir._load_npz(data_paths["seg_r"], self.target_size),
+        ]
+
+    def build_dataloader(self, shuffle, batch_size, num_workers):
+        return DataLoader(
+            self,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            num_workers=num_workers,
+            pin_memory=True,
+        )
