@@ -2,13 +2,13 @@ name: tasks
 channels:
   - defaults
   - conda-forge
-  - pytorch
 dependencies:
-  - python=3.8
-  - pytorch
-  - pytorch-lightning
   - pylint
+  - pytorch
   - black
+  - python=3.8
   - flake8
   - torchmetrics
-prefix: /home/decker/conda/envs/tasks
+  - pytorch-lightning
+  - pillow
+prefix: /home/luiz.decker/miniconda3/envs/tasks
