@@ -102,7 +102,7 @@ def get_data_from_id(id, path):
     }
 
 
-def gen_file_list(dataset_path):
+def gen_file_list(dataset_path, scenes):
     """
     Generates a file list with all the images from the dataset
 
@@ -118,8 +118,16 @@ def gen_file_list(dataset_path):
 
     file_list = []
     scene_folders = get_scenes_paths(dataset_path)
+    found_scenes = [scene.split("/")[-1] for scene in scene_folders]
+    assert (
+        all(scene in found_scenes for scene in scenes),
+        f"{scene} not found!\n{found_scenes}",
+    )
+
     for scene in scene_folders:
         scene_name = scene.split("/")[-1]
+        if scene not in scenes:
+            continue
 
         for difficulty in ["Easy", "Hard"]:
 
@@ -148,11 +156,12 @@ def gen_file_list(dataset_path):
 class TartanAir:
     "Dataloader for tartanair dataset"
 
-    def __init__(self, dataset_root, target_size=None):
+    def __init__(self, dataset_root, scenes, target_size=None):
         """"""
         self.dataset_root = dataset_root
         self.file_list = gen_file_list(self.dataset_root)
         self.target_size = target_size
+        self.scenes = scenes
 
     def __len__(self):
         return len(self.file_list)
