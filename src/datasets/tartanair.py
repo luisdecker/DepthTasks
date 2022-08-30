@@ -1,6 +1,7 @@
 "Dataloading utilities for TartanAir dataset"
 
 from glob import glob
+import json
 import os
 
 import numpy as np
@@ -44,6 +45,11 @@ from torch.utils.data import DataLoader
 
 # fmt: on
 "Utility Functions_____________________________________________________________"
+
+
+def get_split_from_json(split, file):
+    with open(file, "r") as f:
+        return json.load(f)[split]
 
 
 def is_valid_folder(folder_path):
@@ -119,10 +125,9 @@ def gen_file_list(dataset_path, scenes):
     file_list = []
     scene_folders = get_scenes_paths(dataset_path)
     found_scenes = [scene.split("/")[-1] for scene in scene_folders]
-    assert (
-        all(scene in found_scenes for scene in scenes),
-        f"{scene} not found!\n{found_scenes}",
-    )
+    assert all(
+        scene in found_scenes for scene in scenes
+    ), f"{scene} not found!\n{found_scenes}"
 
     for scene in scene_folders:
         scene_name = scene.split("/")[-1]
@@ -156,12 +161,13 @@ def gen_file_list(dataset_path, scenes):
 class TartanAir:
     "Dataloader for tartanair dataset"
 
-    def __init__(self, dataset_root, scenes, target_size=None):
+    def __init__(self, dataset_root, split, split_json, **args):
         """"""
         self.dataset_root = dataset_root
-        self.file_list = gen_file_list(self.dataset_root)
-        self.target_size = target_size
-        self.scenes = scenes
+        self.scenes = get_split_from_json(split, split_json)
+        self.file_list = gen_file_list(self.dataset_root, self.scenes)
+        self.target_size = args.get("target_size")
+        self.features = args["features"]
 
     def __len__(self):
         return len(self.file_list)
@@ -194,14 +200,16 @@ class TartanAir:
     def __getitem__(self, idx):
 
         data_paths = self.file_list[idx]
-        return [
-            TartanAir._load_image(data_paths["image_l"], self.target_size),
-            TartanAir._load_image(data_paths["image_r"], self.target_size),
-            TartanAir._load_npz(data_paths["depth_l"], self.target_size),
-            TartanAir._load_npz(data_paths["depth_r"], self.target_size),
-            TartanAir._load_npz(data_paths["seg_l"], self.target_size),
-            TartanAir._load_npz(data_paths["seg_r"], self.target_size),
-        ]
+
+        data = []
+        for feature in self.features:
+            data.append(
+                TartanAir._load_image(data_paths[feature], self.target_size)
+                if data_paths[feature].endswith(".png")
+                else TartanAir._load_npz(data_paths[feature], self.target_size)
+            )
+
+        return data
 
     def build_dataloader(self, shuffle, batch_size, num_workers):
         return DataLoader(
