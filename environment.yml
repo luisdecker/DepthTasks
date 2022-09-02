@@ -1,6 +1,7 @@
 name: tasks
 channels:
   - defaults
+  - conda-forge
 dependencies:
   - pylint
   - pytorch
@@ -12,4 +13,5 @@ dependencies:
   - pillow
   - matplotlib
   - torchvision
+  - accimage
 prefix: /home/luiz.decker/miniconda3/envs/tasks
