@@ -9,6 +9,8 @@ from PIL import Image
 
 from torch.utils.data import DataLoader
 
+from datasets.image_transforms import ImageTransformer
+
 # fmt: off
 """DATASET STRUCTURE
 -scene1
@@ -81,11 +83,6 @@ def get_scenes_paths(dataset_path):
     # Validate if is a scene folder
     folders = [f for f in folders if is_valid_folder(f)]
 
-    print(
-        "[Tartanair][get_scenes_paths] Found the following scenes in tartanair folder:",
-        [f.split("/")[-1] for f in folders],
-    )
-
     return folders
 
 
@@ -131,7 +128,7 @@ def gen_file_list(dataset_path, scenes):
 
     for scene in scene_folders:
         scene_name = scene.split("/")[-1]
-        if scene not in scenes:
+        if scene_name not in scenes:
             continue
 
         for difficulty in ["Easy", "Hard"]:
@@ -168,6 +165,9 @@ class TartanAir:
         self.file_list = gen_file_list(self.dataset_root, self.scenes)
         self.target_size = args.get("target_size")
         self.features = args["features"]
+        self.split = split
+
+        self.image_transformer = ImageTransformer(self.split).get_transform()
 
     def __len__(self):
         return len(self.file_list)
@@ -201,13 +201,15 @@ class TartanAir:
 
         data_paths = self.file_list[idx]
 
-        data = []
+        data = {}
         for feature in self.features:
-            data.append(
+            data[feature] = (
                 TartanAir._load_image(data_paths[feature], self.target_size)
                 if data_paths[feature].endswith(".png")
                 else TartanAir._load_npz(data_paths[feature], self.target_size)
             )
+        data = self.image_transformer(data)
+        data = [data[feature] for feature in self.features]
 
         return data
 
