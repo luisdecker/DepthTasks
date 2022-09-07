@@ -1,4 +1,5 @@
-from tartanair import TartanAir
+""""""
+from .tartanair import TartanAir
 
 
 def get_dataloader(dataset):
