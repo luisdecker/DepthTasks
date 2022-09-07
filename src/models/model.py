@@ -1,26 +1,31 @@
 "Definition a abstract model and implementation of common model functions"
 
 from pytorch_lightning import LightningModule
+import torch
 
 
 class Model(LightningModule):
     """Abstract Model"""
 
     def __init__(self, **args):
-        super().__init__(*args)
+        super().__init__()
 
         # Configure each one of the models tasks
-        self.tasks = args["tasks"]
+        # self.tasks = args["tasks"]
 
         # Configure dataloaders
-        self.dataloader = args["train_data"]
+        # self.dataloader = args["train_data"]
 
     def training_step(self, batch, batch_i):
         """One step of training"""
         x, y = batch
-        _y = self.forward(x, y)
+        _y = self.forward(x)
         # compute_loss is a function that should compute the loss for all the
         # tasks
         loss = self.compute_loss(_y, y)
         self.log("training_loss", loss)
         return loss
+
+    def configure_optimizers(self):
+        return torch.optim.Adadelta(self.parameters(), lr=1)
+
