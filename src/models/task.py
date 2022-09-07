@@ -7,15 +7,15 @@ class Task:
     """A network task"""
 
     def __init__(self, **args) -> None:
+        ""
+        # # Loss function for this task
+        # self.loss = args["loss"]
 
-        # Loss function for this task
-        self.loss = args["loss"]
+        # # Metrics to be evaluated considering this task
+        # self.metrics = args["metrics"]
 
-        # Metrics to be evaluated considering this task
-        self.metrics = args["metrics"]
-
-        # The task name
-        self.name = args["name"]
+        # # The task name
+        # self.name = args["name"]
 
     def evaluate(self, y, _y):
         "Evaluates a task using the and metrics"
