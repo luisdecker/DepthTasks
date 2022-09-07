@@ -1,10 +1,9 @@
 "Basic encoder-decoder"
 
-from model import Model
+from .model import Model
 
-import torch
 import torch.nn as nn
-from task import DenseRegression
+from .task import DenseRegression
 
 
 class Encoder(nn.Module):
@@ -20,13 +19,11 @@ class Encoder(nn.Module):
     def forward(self, x):
 
         # Swap axis
-        x = torch.swapaxes(x, 1, 2)
         # apply convs
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
 
-        x = torch.swapaxes(x, 1, 2)
         return x
 
 
@@ -43,17 +40,15 @@ class Decoder(nn.Module):
             in_channels=64, out_channels=32, kernel_size=3
         )
         self.upconv3 = nn.ConvTranspose2d(
-            in_channels=32, out_channels=3, kernel_size=3
+            in_channels=32, out_channels=1, kernel_size=3
         )
 
     def forward(self, x):
-        x = torch.swapaxes(x, 1, 2)
 
         x = self.upconv1(x)
         x = self.upconv2(x)
         x = self.upconv3(x)
-
-        x = torch.swapaxes(x, 1, 2)
+        return x
 
 
 class EncoderDecoder(Model):
@@ -66,7 +61,8 @@ class EncoderDecoder(Model):
 
         self.decoder = Decoder()
 
-        self.task = DenseRegression(name="autoencode")
+        self.task = DenseRegression(name="autoencoder")
+        self.task.loss = self.task.loss.cuda()
 
     def forward(self, x):
         "Forward step"
