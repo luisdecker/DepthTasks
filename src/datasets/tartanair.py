@@ -7,6 +7,7 @@ import os
 import numpy as np
 from PIL import Image
 
+import torch
 from torch.utils.data import DataLoader
 
 from datasets.image_transforms import ImageTransformer
@@ -201,17 +202,25 @@ class TartanAir:
 
         data_paths = self.file_list[idx]
 
+        input_features, label_features = self.features
+
+        input_data = self.get_data_from_features(data_paths, input_features)
+        input_data = torch.stack([input_data[f] for f in input_features])
+
+        label_data = self.get_data_from_features(data_paths, label_features)
+        label_data = torch.stack([label_data[f] for f in label_features])
+       
+        return input_data, label_data
+
+    def get_data_from_features(self, data_paths, features):
         data = {}
-        for feature in self.features:
+        for feature in features:
             data[feature] = (
                 TartanAir._load_image(data_paths[feature], self.target_size)
                 if data_paths[feature].endswith(".png")
                 else TartanAir._load_npz(data_paths[feature], self.target_size)
             )
-        data = self.image_transformer(data)
-        data = [data[feature] for feature in self.features]
-
-        return data
+        return self.image_transformer(data)
 
     def build_dataloader(self, shuffle, batch_size, num_workers):
         return DataLoader(
