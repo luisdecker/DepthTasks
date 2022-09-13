@@ -1,0 +1,26 @@
+{
+    "dataset": "tartanair",
+    "dataset_root": "/datasets/tartan-air/tartan-air/train",
+    "batch_size": 2,
+    "split_json": "configs/scenes_splits.json",
+    "features": [
+        [
+            "image_l"
+        ],
+        [
+            "depth_l"
+        ]
+    ],
+    "tasks": [
+        {
+            "type": "dense_regression",
+            "name": "depth",
+            "loss": null,
+            "metrics": null,
+            "features": [
+                "depth_l"
+            ],
+            "decoder" : "simple"
+        }
+    ]
+}
