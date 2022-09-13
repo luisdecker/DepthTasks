@@ -54,6 +54,8 @@ class SimpleEncoder(Model):
 
         x, partial_maps = self.encoder(x)
 
+        x = [task.decoder(x, partial_maps) for task in self.tasks]
+
 
         # Reassemble to (batch, outputs, channels, w, h)
         x = torch.swapaxes(torch.stack(x), 0, 1)
