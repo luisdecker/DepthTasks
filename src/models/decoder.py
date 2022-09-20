@@ -51,39 +51,58 @@ class UnetDecoder(Decoder):
             type(skip_dimensions) == list
         ), "skip_dimensions must be a list with [(map_channels, map_factor)]"
 
+        self.activation = nn.GELU  # TODO: Parametrize this!
+
         self.layers = []
-        skip_dimensions = reversed(skip_dimensions)
+        # Reverse since we are decoding
+        skip_dimensions = list(reversed(skip_dimensions))
 
         for i, params in enumerate(skip_dimensions):
             channels, factor = params
+
+            # Check if we are in the last upscale (final data)
+            channels = channels if channels != -1 else output_channels
+
+            # Check if we are in the first upscale (from encoder)
             in_channels = (
                 input_channels if i == 0 else skip_dimensions[i - 1][0]
             )
-            stage_layers = []
 
-            num_upscales = factor / 2
+            # Create each decoding stage
+            stage_layers = []
+            num_upscales = factor // 2
+
             for j in range(num_upscales):
 
                 stage_layers.append(
                     UpsampleConv(
                         in_channels,
+                        # Keep channels until dimensions are correct
                         channels if j == num_upscales - 1 else in_channels,
                     )
                 )
             self.layers.append(stage_layers)
-        
-        self.layers = [nn.Sequential(*stage) for stage in self.layers]
+
+        self.layers = nn.ModuleList(
+            [nn.Sequential(*stage) for stage in self.layers]
+        )
+        self.apply(self._init_weights)
 
     def forward(self, x, encoder_partial_maps):
 
-        encoder_partial_maps = reversed(encoder_partial_maps)
+        encoder_partial_maps = list(reversed(encoder_partial_maps))
 
         for i, stage in enumerate(self.layers[:-1]):
             x = stage(x)
             x = x + encoder_partial_maps[i]
 
+        # Last layer does not have a skip connection
         x = self.layers[-1](x)
 
         return x
 
+    def _init_weights(self, m):
+            if isinstance(m, (nn.Conv2d, nn.Linear)):
+                nn.init.xavier_uniform_(m.weight)
+                nn.init.zeros_(m.bias)
 

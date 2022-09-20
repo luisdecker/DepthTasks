@@ -10,6 +10,8 @@ class UpsampleConv(nn.Module):
         kernel_size = args.get("kernel_size", 3)
         stride = args.get("stride", 1)
         padding = args.get("padding", 1)
+        
+        self.activation = args.get("activation", nn.Mish)()
 
         self.upsample = nn.UpsamplingBilinear2d(scale_factor=2)
 
@@ -25,5 +27,6 @@ class UpsampleConv(nn.Module):
 
         x = self.upsample(x)
         x = self.conv(x)
+        x = self.activation(x)
 
         return x

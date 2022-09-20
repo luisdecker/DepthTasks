@@ -9,7 +9,7 @@ from .task import DenseRegression
 
 class Encoder(nn.Module):
     """Encoder"""
-   
+
     def __init__(self):
         super().__init__()
 
@@ -56,7 +56,6 @@ class SimpleEncoder(Model):
 
         x = [task.decoder(x, partial_maps) for task in self.tasks]
 
-
-        # Reassemble to (batch, outputs, channels, w, h)
+        # Reassemble to (batch, outputs, channels, h, w)
         x = torch.swapaxes(torch.stack(x), 0, 1)
         return x

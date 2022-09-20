@@ -1,11 +1,11 @@
 "Basic encoder-decoder"
 
-from .model import Model
-
 from torchvision.models import convnext_tiny, ConvNeXt_Tiny_Weights
 import torch.nn as nn
-from .task import DenseRegression
+import torch
 
+from .model import Model
+from .task import DenseRegression
 
 
 class ConvNext(Model):
@@ -14,19 +14,27 @@ class ConvNext(Model):
     def __init__(self, **args):
         super().__init__(**args)
 
-        self.convnext = (
+        self.backbone = (
             convnext_tiny(weights=ConvNeXt_Tiny_Weights.IMAGENET1K_V1)
             if args.get("pretrained_encoder")
             else convnext_tiny()
         )
+        self.encoder = self.backbone.features
 
-        self.encoder = self.convnext.features
-        
-        for task in self.tasks:
-            task.decoder = task.decoder(
-                input_channels=1024, output_channels=task.channels
-            )
+        self.skip_dimensions = [[-1, 4], [96, 2], [192, 2], [384, 2]]
 
+        self.decoders = torch.nn.ModuleList(
+            [
+                task.decoder(
+                    input_channels=768,
+                    output_channels=task.channels,
+                    skip_dimensions=self.skip_dimensions,
+                )
+                for task in self.tasks
+            ]
+        )
+
+        self.apply(self._init_weights)
 
     def forward(self, x):
         "Forward step"
@@ -55,11 +63,13 @@ class ConvNext(Model):
         x = self.encoder[6](x)  # -> x = (b, 1024, h/32, w/32) ( ^*2 )
         x = self.encoder[7](x)
 
-        x = [task.decoder(x, partial_maps) for task in self.tasks]
-        
+        x = [decoder(x, partial_maps) for decoder in self.decoders]
 
+        # Reassemble to (batch, outputs, channels, h, w)
+        x = torch.swapaxes(torch.stack(x), 0, 1)
         return x
 
-    def compute_loss(self, _y, y):
-        "Computes the autoencoding loss"
-        return self.task.loss(_y, y)
+    def _init_weights(self, m):
+        if isinstance(m, (nn.Conv2d, nn.Linear)):
+            nn.init.xavier_uniform_(m.weight)
+            nn.init.zeros_(m.bias)

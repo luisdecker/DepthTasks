@@ -1,6 +1,7 @@
 "Definition of a model task"
 
 import torchmetrics
+import torch.nn as nn
 
 
 class Task:
@@ -15,18 +16,11 @@ class Task:
 
         self.channels = channels
 
-    def evaluate(self, y, _y):
-        "Evaluates a task using the metrics"
-
-        computed_metrics = {}
-        for metric in self.metrics:
-            metric_name = f"{self.name}/{metric.name}"
-            computed_metrics[metric_name] = metric(y, _y)
-        return computed_metrics
+    def compute_metric(self, pred, true):
+        return self.metric(pred, true)
 
     def compute_loss(self, pred, true):
         """Computes loss for a batch of predicitons"""
-        # Split the outputs
         return self.loss(pred, true)
 
 
@@ -37,12 +31,10 @@ class DenseRegression(Task):
         super().__init__(**args)
 
         # Default loss if none specified
-        self.loss = args.get("loss") or torchmetrics.MeanSquaredError(
-            squared=True
-        )
+        self.loss = args.get("loss") or nn.MSELoss()
 
         # Metrics
-        self.metrics = args.get("metrics") or torchmetrics.MeanSquaredError(
+        self.metric = args.get("metrics") or torchmetrics.MeanSquaredError(
             squared=False
         )
 
