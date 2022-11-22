@@ -1,11 +1,14 @@
 {
     "dataset": "tartanair",
+    "num_workers": 1,
     "target_size": [
         224,
         224
     ],
+    "depth_clip": 16448,
     "dataset_root": "/datasets/tartan-air/tartan-air/train",
-    "batch_size": 8,
+    "batch_size": 20,
+    "epochs": 100,
     "split_json": "configs/scenes_splits.json",
     "features": [
         [
@@ -21,10 +24,14 @@
             "name": "depth",
             "loss": null,
             "metrics": null,
+            "channels": 1,
             "features": [
                 "depth_l"
             ],
-            "decoder": "simple"
+            "decoder": {
+                "type": "unet",
+                "args": {}
+            }
         }
     ]
 }

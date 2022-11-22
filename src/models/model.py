@@ -34,8 +34,21 @@ class Model(LightningModule):
 
         return metrics
 
+   
+
     def configure_optimizers(self):
-        return torch.optim.NAdam(self.parameters(), lr=1e-4)
+
+        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-4)
+
+        lr_scheduler_config = {
+            "scheduler": torch.optim.lr_scheduler.MultiStepLR(
+                optimizer, milestones=[20, 80], gamma=0.1
+            ),
+            "interval": "epoch",
+            "frequency": 1,
+        }
+
+        return {"optimizer": optimizer, "lr_scheduler": lr_scheduler_config}
 
     def compute_loss(self, pred, true):
         """Computes loss for all the tasks"""

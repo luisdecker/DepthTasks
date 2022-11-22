@@ -14,12 +14,11 @@ class ConvNext(Model):
     def __init__(self, **args):
         super().__init__(**args)
 
-        self.backbone = (
+        self.encoder = (
             convnext_tiny(weights=ConvNeXt_Tiny_Weights.IMAGENET1K_V1)
             if args.get("pretrained_encoder")
             else convnext_tiny()
-        )
-        self.encoder = self.backbone.features
+        ).features
 
         self.skip_dimensions = [[-1, 4], [96, 2], [192, 2], [384, 2]]
 
@@ -72,4 +71,4 @@ class ConvNext(Model):
     def _init_weights(self, m):
         if isinstance(m, (nn.Conv2d, nn.Linear)):
             nn.init.xavier_uniform_(m.weight)
-            nn.init.zeros_(m.bias)
+            nn.init.ones_(m.bias)

@@ -3,6 +3,14 @@
 import torchmetrics
 import torch.nn as nn
 
+from models.losses import GlobalMeanRemovedLoss
+
+
+def get_task(task: str):
+    "Gets a task class from a string"
+    available_tasks = {"dense_regression": DenseRegression}
+    return available_tasks[task.lower()]
+
 
 class Task:
     """A network task"""
@@ -31,7 +39,7 @@ class DenseRegression(Task):
         super().__init__(**args)
 
         # Default loss if none specified
-        self.loss = args.get("loss") or nn.MSELoss()
+        self.loss = args.get("loss") or GlobalMeanRemovedLoss()
 
         # Metrics
         self.metric = args.get("metrics") or torchmetrics.MeanSquaredError(

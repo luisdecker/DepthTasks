@@ -2,13 +2,24 @@
 
 import argparse
 import multiprocessing
+import os
+
+import pytorch_lightning as pl
+import torch
+import torchmetrics
+from rich.progress import track
 
 from datasets import get_dataloader
 from file_utils import read_json
 from models.convNext import ConvNext
-from models.decoder import SimpleDecoder, UnetDecoder
+from models.decoder import (
+    ConvNextDecoder,
+    SimpleDecoder,
+    UnetDecoder,
+    get_decoder,
+)
 from models.simple_encoder import SimpleEncoder
-from models.task import DenseRegression
+from models.task import DenseRegression, get_task
 
 
 def read_args():
@@ -20,7 +31,31 @@ def read_args():
     args = vars(parser.parse_args())
     args.update(read_json(args["config"]))
 
+    if "tasks" in args:
+        task_list = []
+        for task in args["tasks"]:
+            Task = get_task(task["type"])
+            Decoder = get_decoder(task["decoder"]["type"])
+
+            _task = Task(
+                name=task["name"],
+                decoder=Decoder,
+                features=task["features"],
+                channels=task["channels"],
+                decoder_args=task["decoder"]["args"],
+            )
+
+            task_list.append(_task)
+        args["tasks"] = task_list
+
     return args
+
+
+"""
+cuda 11.4
+cudnn 8.2.1
+pytorch 1.12
+"""
 
 
 def prepare_dataset(dataset_root, dataset, target_size=None, **args):
@@ -77,12 +112,43 @@ def prepare_dataset(dataset_root, dataset, target_size=None, **args):
 
 
 def debug():
-    import os
 
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     DEVICE = 0
 
     import pytorch_lightning as pl
+
+    # Read CLI and json args
+    args = read_args()
+
+    tasks = args["tasks"]
+
+    # Prepare dataloaders
+    train_loader, val_loader, test_loader = prepare_dataset(
+        train=True, validation=True, **args
+    )
+
+    # Try to train some network
+    model = ConvNext(
+        tasks=tasks, features=args["features"], pretrained_encoder=True
+    ).to_gpu(DEVICE)
+
+    trainer = pl.Trainer(
+        max_epochs=args["epochs"], accelerator="gpu", devices=[DEVICE]
+    )
+
+    trainer.fit(
+        model=model, train_dataloaders=train_loader, val_dataloaders=val_loader
+    )
+
+    print("DONE!")
+
+
+def test():
+    """"""
+    DEVICE = 1
+    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+    network_path = "/home/luiz.decker/code/DepthTasks/lightning_logs/version_23/checkpoints/epoch=99-step=796700.ckpt"
 
     # Read CLI and json args
     args = read_args()
@@ -102,21 +168,36 @@ def debug():
     # Try to train some network
     model = ConvNext(tasks=[task], features=args["features"]).to_gpu(DEVICE)
 
-    trainer = pl.Trainer(max_epochs=10, accelerator="gpu", devices=[DEVICE])
+    state_dict = torch.load(network_path)["state_dict"]
 
-    trainer.fit(
-        model=model, train_dataloaders=train_loader, val_dataloaders=val_loader
-    )
+    model.load_state_dict(state_dict=state_dict)
 
-    print("DONE!")
+    model = model.eval()
+
+    val_iter = iter(val_loader)
+
+    metrics = {"rmse": [], "mape": []}
+
+    rmse = torchmetrics.MeanSquaredError(squared=False)
+    mape = torchmetrics.MeanAbsolutePercentageError()
+
+    with torch.no_grad():
+
+        for batch in track(val_iter, description="Evaluating..."):
+            x, y = batch
+
+            _y = model(x.cuda(DEVICE)).detach().cpu()
+
+            for i in range(len(_y)):
+                metrics["rmse"].append(float(rmse(_y[i], y[i])))
+                metrics["mape"].append(float(mape(_y[i], y[i])))
+
+    metrics["global_rmse"] = float(rmse.compute())
+    metrics["global_mape"] = float(mape.compute())
+
+    print("Done!")
 
 
-def debug_convnext():
-    net = ConvNext(pretrained_encoder=False)
-    import torch
-
-    x = torch.zeros([1, 3, 256, 256])
-    net(x)
-
-
-debug()
+if __name__ == "__main__":
+    args = debug()
+    print("Done!")

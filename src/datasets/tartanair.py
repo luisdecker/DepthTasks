@@ -167,6 +167,7 @@ class TartanAir:
         self.target_size = args.get("target_size")
         self.features = args["features"]
         self.split = split
+        self.depth_clip = args.get("depth_clip")
 
         self.image_transformer = ImageTransformer(self.split).get_transform()
 
@@ -209,17 +210,24 @@ class TartanAir:
 
         label_data = self.get_data_from_features(data_paths, label_features)
         label_data = torch.stack([label_data[f] for f in label_features])
-       
+
         return input_data, label_data
 
     def get_data_from_features(self, data_paths, features):
         data = {}
         for feature in features:
-            data[feature] = (
+            read_data = (
                 TartanAir._load_image(data_paths[feature], self.target_size)
                 if data_paths[feature].endswith(".png")
                 else TartanAir._load_npz(data_paths[feature], self.target_size)
             )
+            if feature.startswith("depth") and self.depth_clip:
+                depth = np.array(read_data)
+                np.clip(depth, a_min=0, a_max=self.depth_clip)
+                read_data = Image.fromarray(depth).convert("F")
+
+            data[feature] = read_data
+
         return self.image_transformer(data)
 
     def build_dataloader(self, shuffle, batch_size, num_workers):
