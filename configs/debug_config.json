@@ -1,12 +1,13 @@
 {
     "dataset": "tartanair",
-    "num_workers": 1,
+    "num_workers": 8,
     "target_size": [
         224,
         224
     ],
     "depth_clip": 16448,
-    "dataset_root": "/datasets/tartan-air/tartan-air/train",
+    "mask_sky": true,
+    "dataset_root": "/work/tartan-air/train",
     "batch_size": 20,
     "epochs": 100,
     "split_json": "configs/scenes_splits.json",
@@ -15,7 +16,8 @@
             "image_l"
         ],
         [
-            "depth_l"
+            "depth_l",
+            "seg_l"
         ]
     ],
     "tasks": [
@@ -28,6 +30,7 @@
             "features": [
                 "depth_l"
             ],
+            "mask_feature": "seg_l",
             "decoder": {
                 "type": "unet",
                 "args": {}

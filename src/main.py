@@ -42,6 +42,7 @@ def read_args():
                 decoder=Decoder,
                 features=task["features"],
                 channels=task["channels"],
+                mask_feature=task.get("mask_feature"),
                 decoder_args=task["decoder"]["args"],
             )
 
@@ -50,12 +51,6 @@ def read_args():
 
     return args
 
-
-"""
-cuda 11.4
-cudnn 8.2.1
-pytorch 1.12
-"""
 
 
 def prepare_dataset(dataset_root, dataset, target_size=None, **args):
@@ -130,7 +125,7 @@ def debug():
 
     # Try to train some network
     model = ConvNext(
-        tasks=tasks, features=args["features"], pretrained_encoder=True
+        tasks=tasks, features=args["features"], pretrained_encoder=False
     ).to_gpu(DEVICE)
 
     trainer = pl.Trainer(

@@ -12,6 +12,27 @@ from torch.utils.data import DataLoader
 
 from datasets.image_transforms import ImageTransformer
 
+SKY_INDEXES = {
+    "neighborhood": 146,
+    "abandonedfactory": 196,
+    "abandonedfactory_night": 196,
+    "amusement": 182,
+    "carwelding": None,
+    "endofworld": 146,
+    "gascola": 112,
+    "hospital": None,
+    "japanesealley": None,
+    "ocean": 231,
+    "office": None,
+    "office2": None,
+    "oldtown": 223,
+    "seasidetown": 130,
+    "seasonsforest": 196,
+    "seasonsforest_winter": 146,
+    "soulcity": 130,
+    "westerndesert": 196,
+}
+
 # fmt: off
 """DATASET STRUCTURE
 -scene1
@@ -168,6 +189,7 @@ class TartanAir:
         self.features = args["features"]
         self.split = split
         self.depth_clip = args.get("depth_clip")
+        self.mask_sky = args.get("mask_sky")
 
         self.image_transformer = ImageTransformer(self.split).get_transform()
 
@@ -221,10 +243,24 @@ class TartanAir:
                 if data_paths[feature].endswith(".png")
                 else TartanAir._load_npz(data_paths[feature], self.target_size)
             )
+
+            # Depth clipping
             if feature.startswith("depth") and self.depth_clip:
                 depth = np.array(read_data)
                 np.clip(depth, a_min=0, a_max=self.depth_clip)
                 read_data = Image.fromarray(depth).convert("F")
+
+            # Sky masking
+            if feature.startswith("seg") and self.mask_sky:
+                seg_map = np.floor (np.array(read_data))
+                scene = data_paths["scene"]
+                if SKY_INDEXES[scene]:
+                    ground_pixels = seg_map != SKY_INDEXES[scene]
+                    read_data = Image.fromarray(ground_pixels).convert("F")
+                else:
+                    read_data = Image.fromarray(
+                        np.ones_like(seg_map) * 255
+                    ).convert("F")
 
             data[feature] = read_data
 

@@ -47,3 +47,7 @@ class DenseRegression(Task):
         )
 
         self.name = args.get("name") or "dense_regression"
+
+        self.mask_feature = args['mask_feature']
+
+

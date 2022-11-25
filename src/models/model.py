@@ -34,8 +34,6 @@ class Model(LightningModule):
 
         return metrics
 
-   
-
     def configure_optimizers(self):
 
         optimizer = torch.optim.AdamW(self.parameters(), lr=1e-4)
@@ -56,11 +54,19 @@ class Model(LightningModule):
         # Tasks must be in order
         total_loss = 0
         for task_index, task in enumerate(self.tasks):
+
             label_idx = [
                 self.features[1].index(feat) for feat in task.features
             ]
             task_pred = pred[:, [task_index], ...]
             task_true = true[:, label_idx, ...]
+
+            if task.mask_feature:
+                mask = true[:, self.features[1].index(task.mask_feature), ...]
+                mask = torch.unsqueeze(mask, 1)
+                mask = mask / 255
+                task_true = task_true * mask 
+                task_pred = task_pred * mask
 
             total_loss += task.compute_loss(task_pred, task_true)
 
@@ -77,6 +83,13 @@ class Model(LightningModule):
             ]
             task_pred = pred[:, [task_index], ...]
             task_true = true[:, label_idx, ...]
+
+            if task.mask_feature:
+                mask = true[:, self.features[1].index(task.mask_feature), ...]
+                mask = torch.unsqueeze(mask, 1)
+                mask = mask / 255
+                task_true = task_true * mask 
+                task_pred = task_pred * mask
 
             metrics[task.name] = task.compute_metric(task_pred, task_true)
 
