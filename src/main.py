@@ -125,7 +125,7 @@ def debug():
 
     # Try to train some network
     model = ConvNext(
-        tasks=tasks, features=args["features"], pretrained_encoder=False
+        tasks=tasks, features=args["features"], pretrained_encoder=True
     ).to_gpu(DEVICE)
 
     trainer = pl.Trainer(
