@@ -10,8 +10,9 @@ import torchmetrics
 from rich.progress import track
 
 from datasets import get_dataloader
-from file_utils import read_json
+from file_utils import read_json, save_json
 from models.convNext import ConvNext
+from models.resnet import Resnet
 from models.decoder import (
     ConvNextDecoder,
     SimpleDecoder,
@@ -31,6 +32,7 @@ def read_args():
     args = vars(parser.parse_args())
     args.update(read_json(args["config"]))
 
+    args["input_args"] = args.copy()
     if "tasks" in args:
         task_list = []
         for task in args["tasks"]:
@@ -44,13 +46,13 @@ def read_args():
                 channels=task["channels"],
                 mask_feature=task.get("mask_feature"),
                 decoder_args=task["decoder"]["args"],
+                train_on_disparity=task.get("train_on_disparity", False),
             )
 
             task_list.append(_task)
         args["tasks"] = task_list
 
     return args
-
 
 
 def prepare_dataset(dataset_root, dataset, target_size=None, **args):
@@ -70,7 +72,7 @@ def prepare_dataset(dataset_root, dataset, target_size=None, **args):
             dataset_root=dataset_root,
             split="train",
             target_size=target_size,
-            **args
+            **args,
         )
         train_loader = train_dataset.build_dataloader(
             batch_size=batch_size, shuffle=True, num_workers=num_workers
@@ -84,7 +86,7 @@ def prepare_dataset(dataset_root, dataset, target_size=None, **args):
             dataset_root=dataset_root,
             split="validation",
             target_size=target_size,
-            **args
+            **args,
         )
         val_loader = val_dataset.build_dataloader(
             batch_size=batch_size, shuffle=False, num_workers=num_workers
@@ -97,7 +99,7 @@ def prepare_dataset(dataset_root, dataset, target_size=None, **args):
             dataset_root=dataset_root,
             split="test",
             target_size=target_size,
-            **args
+            **args,
         )
         test_loader = test_dataset.build_dataloader(
             batch_size=batch_size, shuffle=False, num_workers=num_workers
@@ -106,15 +108,39 @@ def prepare_dataset(dataset_root, dataset, target_size=None, **args):
     return train_loader, val_loader, test_loader
 
 
+def get_last_exp(logpath):
+    try:
+        folders = next(os.walk(logpath))[1]
+    except StopIteration:
+        return 0
+    after_ = [f.split("_")[-1] for f in folders if len(f.split("_")) > 1]
+    numbers = [int(f) for f in after_ if f.isdigit()]
+    if len(numbers) == 0:
+        return 0
+    last_number = sorted(numbers)[-1]
+    return last_number + 1
+
+
 def debug():
 
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    DEVICE = 0
+    DEVICE = 2
 
     import pytorch_lightning as pl
 
     # Read CLI and json args
     args = read_args()
+
+    # Generate log path
+
+    logpath = os.path.join("logs", args["expname"])
+
+    logpath = os.path.join(logpath, f"_{get_last_exp(logpath)}")
+    os.makedirs(logpath, exist_ok=False)
+
+    # Saves the args in the path
+    args_path = os.path.join(logpath, "args.json")
+    save_json(args_path, args["input_args"])
 
     tasks = args["tasks"]
 
@@ -124,12 +150,15 @@ def debug():
     )
 
     # Try to train some network
-    model = ConvNext(
+    model = Resnet(
         tasks=tasks, features=args["features"], pretrained_encoder=True
     ).to_gpu(DEVICE)
 
     trainer = pl.Trainer(
-        max_epochs=args["epochs"], accelerator="gpu", devices=[DEVICE]
+        max_epochs=args["epochs"],
+        accelerator="gpu",
+        devices=[DEVICE],
+        default_root_dir=logpath,
     )
 
     trainer.fit(

@@ -1,31 +1,30 @@
-"ConvNext"
+"ResNet"
 
-from torchvision.models import convnext_tiny, ConvNeXt_Tiny_Weights
+from torchvision.models import resnet34, ResNet34_Weights
 import torch.nn as nn
 import torch
 
 from .model import Model
-from .task import DenseRegression
 
 
-class ConvNext(Model):
+class Resnet(Model):
     """Encoder-decoder"""
 
     def __init__(self, **args):
         super().__init__(**args)
 
         self.encoder = (
-            convnext_tiny(weights=ConvNeXt_Tiny_Weights.IMAGENET1K_V1)
+            resnet34(weights=ResNet34_Weights.IMAGENET1K_V1)
             if args.get("pretrained_encoder")
-            else convnext_tiny()
-        ).features
+            else resnet34()
+        )
 
-        self.skip_dimensions = [[-1, 4], [96, 2], [192, 2], [384, 2]]
+        self.skip_dimensions = [[-1, 4], [64, 2], [128, 2], [256, 2]]
 
         self.decoders = torch.nn.ModuleList(
             [
                 task.decoder(
-                    input_channels=768,
+                    input_channels=512,
                     output_channels=task.channels,
                     skip_dimensions=self.skip_dimensions,
                 )
@@ -33,7 +32,7 @@ class ConvNext(Model):
             ]
         )
 
-        self.apply(self._init_weights)
+        self.encoder.apply(self._init_weights)
 
     def forward(self, x):
         "Forward step"
@@ -44,23 +43,24 @@ class ConvNext(Model):
         # x = (b, c, h, w)
 
         partial_maps = []
-        x = self.encoder[0](x)  # -> x = (b, 128, h/4, w/4) ( ^*4 )
-        x = self.encoder[1](x)  # -> x = (b, 128, h/4, w/4)
+
+        x = self.encoder.conv1(x)
+        x = self.encoder.bn1(x)
+        x = self.encoder.relu(x)
+        x = self.encoder.maxpool(x)
+        x = self.encoder.layer1(x)
         enc_skip_1 = x
         partial_maps.append(enc_skip_1)
 
-        x = self.encoder[2](x)  # -> x = (b, 256, h/8, w/8) ( ^*2 )
-        x = self.encoder[3](x)  # -> x = (b, 256, h/8, w/8)
+        x = self.encoder.layer2(x)
         enc_skip_2 = x
         partial_maps.append(enc_skip_2)
 
-        x = self.encoder[4](x)  # -> x = (b, 512, h/16, w/16) ( ^*2 )
-        x = self.encoder[5](x)  # -> x = (b, 512, h/16, w/16)
+        x = self.encoder.layer3(x)
         enc_skip_3 = x
         partial_maps.append(enc_skip_3)
 
-        x = self.encoder[6](x)  # -> x = (b, 1024, h/32, w/32) ( ^*2 )
-        x = self.encoder[7](x)
+        x = self.encoder.layer4(x)
 
         x = [decoder(x, partial_maps) for decoder in self.decoders]
 
@@ -71,4 +71,5 @@ class ConvNext(Model):
     def _init_weights(self, m):
         if isinstance(m, (nn.Conv2d, nn.Linear)):
             nn.init.xavier_uniform_(m.weight)
-            nn.init.ones_(m.bias)
+            if m.bias is not None:
+                nn.init.ones_(m.bias)

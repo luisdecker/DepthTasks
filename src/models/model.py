@@ -13,6 +13,13 @@ class Model(LightningModule):
         # Configure each one of the models tasks
         self.tasks = args["tasks"]
 
+        metrics = {}
+        for task in self.tasks:
+            metrics[task.name] = torch.nn.ModuleDict(task.metric)
+            metrics[task.name]["loss"] = task.loss
+
+        self.metrics = torch.nn.ModuleDict(metrics)
+
         self.features = args["features"]
 
     def training_step(self, batch, batch_i):
@@ -29,14 +36,47 @@ class Model(LightningModule):
         _y = self.forward(x)
 
         metrics = self.compute_metric(_y, y)
-        for metric in metrics:
-            self.log(metric, metrics[metric])
+        self.log_dict(metrics, logger=True)
 
         return metrics
 
+    def training_epoch_end(self, outputs):
+        """"""
+
+        _metrics = {}
+        if outputs and isinstance(outputs[0], dict):
+            outputs = [output["loss"] for output in outputs]
+
+        _metrics["train_loss"] = torch.stack(outputs).mean()
+
+        self.log_dict(_metrics, logger=True, prog_bar=True)
+
+    def validation_epoch_end(self, outputs):
+        """"""
+
+        _metrics = {}
+
+        for task in self.tasks:
+
+            if outputs and isinstance(outputs[0], dict):
+                task_losses = [
+                    output[f"{task.name}_loss"] for output in outputs
+                ]
+                _metrics[f"val_{task.name}_loss"] = torch.stack(
+                    task_losses
+                ).mean()
+
+            for metric_name, metric in self.metrics[task.name].items():
+                if hasattr(metric, "compute"):
+                    _metrics[
+                        f"val_{task.name}_{metric_name}"
+                    ] = metric.compute()
+                    metric.reset()
+        self.log_dict(_metrics, logger=True, prog_bar=True)
+
     def configure_optimizers(self):
 
-        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-4)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-3)
 
         lr_scheduler_config = {
             "scheduler": torch.optim.lr_scheduler.MultiStepLR(
@@ -61,14 +101,26 @@ class Model(LightningModule):
             task_pred = pred[:, [task_index], ...]
             task_true = true[:, label_idx, ...]
 
+            if task.train_on_disparity:
+                # Gt converted to disparity on loss
+                task_true = 1 / task_true
+
             if task.mask_feature:
                 mask = true[:, self.features[1].index(task.mask_feature), ...]
                 mask = torch.unsqueeze(mask, 1)
                 mask = mask / 255
-                task_true = task_true * mask 
-                task_pred = task_pred * mask
+                mask = mask.bool()
 
-            total_loss += task.compute_loss(task_pred, task_true)
+                batch_loss = 0
+                for m, t, p in zip(mask, task_true, task_pred):
+                    batch_loss += self.metrics[task.name]["loss"](p[m], t[m])
+                batch_loss /= true.shape[0]
+                total_loss += batch_loss
+                continue
+
+            task_pred = task_pred.squeeze(dim=1)
+            task_true = task_true.squeeze(dim=1)
+            total_loss += self.metrics[task.name]["loss"](task_pred, task_true)
 
         return total_loss
 
@@ -84,14 +136,41 @@ class Model(LightningModule):
             task_pred = pred[:, [task_index], ...]
             task_true = true[:, label_idx, ...]
 
+            if task.train_on_disparity:
+                # Reconstruct the image for metric computing
+                task_pred = torch.nn.functional.relu(task_pred) + 1e-6
+                task_pred = 1 / task_pred
+
             if task.mask_feature:
                 mask = true[:, self.features[1].index(task.mask_feature), ...]
                 mask = torch.unsqueeze(mask, 1)
                 mask = mask / 255
-                task_true = task_true * mask 
-                task_pred = task_pred * mask
+                mask = mask.bool()
 
-            metrics[task.name] = task.compute_metric(task_pred, task_true)
+                _metrics = {}
+                for metric_name, metric in self.metrics[task.name].items():
+                    batch_metric = 0
+                    for t, p, m in zip(task_true, task_pred, mask):
+                        batch_metric += metric(p[m], t[m])
+                    batch_metric /= task_true.shape[0]
+                    _metrics[f"{task.name}_{metric_name}"] = batch_metric
+                metrics.update(_metrics)
+
+                continue
+
+            task_metrics = self.metrics[task.name]
+            _metrics = {}
+            for metric_name, metric in task_metrics.items():
+
+                _metrics[metric_name] = metric(
+                    task_pred.squeeze(dim=1), task_true.squeeze(dim=1)
+                )
+
+            for metric in _metrics:
+
+                value = _metrics[metric]
+                name = f"{task.name}_{metric}"
+                metrics[name] = value
 
         return metrics
 
@@ -99,7 +178,4 @@ class Model(LightningModule):
         self = self.cuda(gpu)
         [decoder.cuda(gpu) for decoder in self.decoders]
 
-        for task in self.tasks:
-            task.loss = task.loss.cuda(gpu)
-            task.metric = task.metric.cuda(gpu)
         return self
