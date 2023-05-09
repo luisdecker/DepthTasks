@@ -124,7 +124,7 @@ def get_last_exp(logpath):
 def debug():
 
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    DEVICE = 2
+    DEVICE = 3
 
     import pytorch_lightning as pl
 
@@ -150,8 +150,8 @@ def debug():
     )
 
     # Try to train some network
-    model = Resnet(
-        tasks=tasks, features=args["features"], pretrained_encoder=True
+    model = ConvNext(
+        tasks=tasks, features=args["features"], pretrained_encoder=False
     ).to_gpu(DEVICE)
 
     trainer = pl.Trainer(
