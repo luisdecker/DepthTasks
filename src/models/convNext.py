@@ -1,6 +1,13 @@
 "ConvNext"
 
-from torchvision.models import convnext_tiny, ConvNeXt_Tiny_Weights
+from torchvision.models import (
+    convnext_tiny,
+    convnext_base,
+    convnext_large,
+    ConvNeXt_Tiny_Weights,
+    ConvNeXt_Base_Weights,
+    ConvNeXt_Large_Weights,
+)
 import torch.nn as nn
 import torch
 
@@ -13,19 +20,37 @@ class ConvNext(Model):
 
     def __init__(self, **args):
         super().__init__(**args)
+        encoders = {
+            "tiny": (convnext_tiny, ConvNeXt_Tiny_Weights),
+            "base": (convnext_base, ConvNeXt_Base_Weights),
+            "large": (convnext_large, ConvNeXt_Large_Weights),
+        }
+        if args.get("encoder_name"):
+            encoder_name = args.get("encoder_name")
+        else:
+            encoder_name = "tiny"
+
+        encoder, weights = encoders[encoder_name]
 
         self.encoder = (
-            convnext_tiny(weights=ConvNeXt_Tiny_Weights.IMAGENET1K_V1)
+            encoder(weights=weights.IMAGENET1K_V1)
             if args.get("pretrained_encoder")
-            else convnext_tiny()
+            else encoder()
         ).features
 
-        self.skip_dimensions = [[-1, 4], [96, 2], [192, 2], [384, 2]]
+        skip_dims = {
+            "tiny": [[-1, 4], [96, 2], [192, 2], [384, 2]],
+            "base": [[-1, 4], [128, 2], [256, 2], [512, 2]],
+            "large": [[-1, 4], [192, 2], [384, 2], [768, 2]],
+        }
 
+        self.skip_dimensions = skip_dims[encoder_name]
+
+        input_channels = {"tiny": 768, "base": 1024, "large": 1536}
         self.decoders = torch.nn.ModuleList(
             [
                 task.decoder(
-                    input_channels=768,
+                    input_channels=input_channels[encoder_name],
                     output_channels=task.channels,
                     skip_dimensions=self.skip_dimensions,
                 )
@@ -43,7 +68,7 @@ class ConvNext(Model):
 
         # x = (b, c, h, w)
 
-        partial_maps = []
+        partial_maps = []  # Channels are for base size
         x = self.encoder[0](x)  # -> x = (b, 128, h/4, w/4) ( ^*4 )
         x = self.encoder[1](x)  # -> x = (b, 128, h/4, w/4)
         enc_skip_1 = x

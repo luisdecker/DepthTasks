@@ -64,7 +64,7 @@ def get_data_from_id(id, climate_root, trajec):
     "Get the path from all the data from a id"
 
     return {
-        "depth_l": os.path.join(climate_root, "depth", trajec, f"{id}.PNG"),
+        "depth_l": os.path.join(climate_root, "stereo_disparity", trajec, f"{id}.PNG"),
         "image_l": os.path.join(
             climate_root, "color_left", trajec, f"{id}.JPEG"
         ),
@@ -132,11 +132,18 @@ class MidAir:
         return len(self.file_list)
 
     @staticmethod
-    def _load_image(image_path, resize_shape=None):
+    def _load_image(image_path, resize_shape=None, feature=None):
         """"""
         # Loads image
         assert os.path.isfile(image_path), f"{image_path} is not a file!"
         img = Image.open(image_path)
+
+        if feature.startswith('depth'):
+            img = np.asarray(img, np.uint16)
+            img.dtype = np.float16
+            img = 255/img
+            
+            img = Image.fromarray(img.astype(np.float32))
 
         # Resizes if shape is provided
         if resize_shape:
@@ -174,15 +181,9 @@ class MidAir:
         data = {}
         for feature in features:
             read_data = MidAir._load_image(
-                data_paths[feature], self.target_size
+                data_paths[feature], self.target_size, feature
             )
 
-            # Depth resizing
-            if feature.startswith("depth"):
-                depth = np.array(read_data)
-                depth = depth / 100
-                read_data = Image.fromarray(depth).convert("F")
-                
             # Depth clipping
             if feature.startswith("depth") and self.depth_clip:
                 depth = np.array(read_data)

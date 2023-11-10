@@ -1,7 +1,10 @@
 "Definition a abstract model and implementation of common model functions"
 
+import os
 from pytorch_lightning import LightningModule
 import torch
+
+from file_utils import save_json
 
 
 class Model(LightningModule):
@@ -22,13 +25,15 @@ class Model(LightningModule):
 
         self.features = args["features"]
 
+        self.savepath = args.get('savepath')
+
     def training_step(self, batch, batch_i):
         """One step of training"""
         x, y = batch
         _y = self.forward(x)
 
         loss = self.compute_loss(_y, y)
-        self.log("training_loss", loss)
+        self.log("train_step_loss", loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -36,9 +41,35 @@ class Model(LightningModule):
         _y = self.forward(x)
 
         metrics = self.compute_metric(_y, y)
-        self.log_dict(metrics, logger=True)
+        metrics = {("val_step_" + name): val for name, val in metrics.items()}
+        # self.log_dict(metrics, logger=True)
 
         return metrics
+
+    def test_step(self, batch, batch_idx):
+        return self.validation_step(batch, batch_idx)
+    
+    def on_test_epoch_end(self, outputs=None):
+        if outputs:
+            _metrics = {}
+
+            for task in self.tasks:
+                if outputs and isinstance(outputs[0], dict):
+                    task_losses = [
+                        output[f"val_step_{task.name}_loss"] for output in outputs
+                    ]
+                    _metrics[f"test_{task.name}_loss"] = torch.stack(
+                        task_losses
+                    ).mean()
+
+                for metric_name, metric in self.metrics[task.name].items():
+                    if hasattr(metric, "compute"):
+                        _metrics[
+                            f"test_{task.name}_{metric_name}"
+                        ] = metric.compute()
+                        metric.reset()
+            self.log_dict(_metrics)
+        
 
     def training_epoch_end(self, outputs):
         """"""
@@ -57,10 +88,9 @@ class Model(LightningModule):
         _metrics = {}
 
         for task in self.tasks:
-
             if outputs and isinstance(outputs[0], dict):
                 task_losses = [
-                    output[f"{task.name}_loss"] for output in outputs
+                    output[f"val_step_{task.name}_loss"] for output in outputs
                 ]
                 _metrics[f"val_{task.name}_loss"] = torch.stack(
                     task_losses
@@ -75,7 +105,6 @@ class Model(LightningModule):
         self.log_dict(_metrics, logger=True, prog_bar=True)
 
     def configure_optimizers(self):
-
         optimizer = torch.optim.AdamW(self.parameters(), lr=1e-3)
 
         lr_scheduler_config = {
@@ -94,7 +123,6 @@ class Model(LightningModule):
         # Tasks must be in order
         total_loss = 0
         for task_index, task in enumerate(self.tasks):
-
             label_idx = [
                 self.features[1].index(feat) for feat in task.features
             ]
@@ -105,11 +133,19 @@ class Model(LightningModule):
                 # Gt converted to disparity on loss
                 task_true = 1 / task_true
 
-            if task.mask_feature:
-                mask = true[:, self.features[1].index(task.mask_feature), ...]
-                mask = torch.unsqueeze(mask, 1)
-                mask = mask / 255
-                mask = mask.bool()
+            has_nans = task_true.isnan().any()
+            if task.mask_feature or has_nans:
+                feat_mask = torch.ones_like(task_true).bool()
+                nan_mask = ~task_true.isnan()
+                if task.mask_feature:
+                    feat_mask = true[
+                        :, self.features[1].index(task.mask_feature), ...
+                    ]
+                    feat_mask = torch.unsqueeze(feat_mask, 1)
+                    feat_mask = feat_mask / 255
+                    feat_mask = feat_mask.bool()
+
+                mask = nan_mask & feat_mask
 
                 batch_loss = 0
                 for m, t, p in zip(mask, task_true, task_pred):
@@ -141,11 +177,19 @@ class Model(LightningModule):
                 task_pred = torch.nn.functional.relu(task_pred) + 1e-6
                 task_pred = 1 / task_pred
 
-            if task.mask_feature:
-                mask = true[:, self.features[1].index(task.mask_feature), ...]
-                mask = torch.unsqueeze(mask, 1)
-                mask = mask / 255
-                mask = mask.bool()
+            has_nans = task_true.isnan().any()
+            if task.mask_feature or has_nans:
+                nan_mask = ~task_true.isnan()
+                feat_mask = torch.ones_like(task_true).bool()
+                if task.mask_feature:
+                    feat_mask = true[
+                        :, self.features[1].index(task.mask_feature), ...
+                    ]
+                    feat_mask = torch.unsqueeze(mask, 1)
+                    feat_mask = feat_mask / 255
+                    feat_mask = feat_mask.bool()
+
+                mask = nan_mask & feat_mask
 
                 _metrics = {}
                 for metric_name, metric in self.metrics[task.name].items():
@@ -161,13 +205,11 @@ class Model(LightningModule):
             task_metrics = self.metrics[task.name]
             _metrics = {}
             for metric_name, metric in task_metrics.items():
-
                 _metrics[metric_name] = metric(
                     task_pred.squeeze(dim=1), task_true.squeeze(dim=1)
                 )
 
             for metric in _metrics:
-
                 value = _metrics[metric]
                 name = f"{task.name}_{metric}"
                 metrics[name] = value

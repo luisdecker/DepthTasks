@@ -6,51 +6,58 @@ import os
 
 import pytorch_lightning as pl
 import torch
-import torchmetrics
-from rich.progress import track
 
 from datasets import get_dataloader
+from datasets.nyu import NYUDepthV2
+from datasets.midair import MidAir
+from datasets.hypersim import HyperSim
+from datasets.kitti import Kitti
+from eval_utils import eval_dataset
+
+from metrics import get_metric
 from file_utils import read_json, save_json
 from models.convNext import ConvNext
 from models.resnet import Resnet
-from models.decoder import (
-    ConvNextDecoder,
-    SimpleDecoder,
-    UnetDecoder,
-    get_decoder,
-)
-from models.simple_encoder import SimpleEncoder
-from models.task import DenseRegression, get_task
+from models.decoder import get_decoder
+from models.task import get_task
+
+
+def read_tasks(args_tasks):
+    """Reads a task argument list and convert to task objects"""
+    task_list = []
+    for task in args_tasks:
+        Task = get_task(task["type"])
+        Decoder = get_decoder(task["decoder"]["type"])
+        metrics = {name: get_metric(name)() for name in task["metrics"]}
+
+        _task = Task(
+            name=task["name"],
+            decoder=Decoder,
+            metrics=metrics,
+            features=task["features"],
+            channels=task["channels"],
+            mask_feature=task.get("mask_feature"),
+            decoder_args=task["decoder"]["args"],
+            train_on_disparity=task.get("train_on_disparity", False),
+        )
+
+        task_list.append(_task)
+    return task_list
 
 
 def read_args():
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--config", type=str)
+    parser.add_argument("--evaluate_path", type=str, default=None)
 
     args = vars(parser.parse_args())
-    args.update(read_json(args["config"]))
+    if not args["evaluate_path"]:
+        args.update(read_json(args["config"]))
 
     args["input_args"] = args.copy()
     if "tasks" in args:
-        task_list = []
-        for task in args["tasks"]:
-            Task = get_task(task["type"])
-            Decoder = get_decoder(task["decoder"]["type"])
-
-            _task = Task(
-                name=task["name"],
-                decoder=Decoder,
-                features=task["features"],
-                channels=task["channels"],
-                mask_feature=task.get("mask_feature"),
-                decoder_args=task["decoder"]["args"],
-                train_on_disparity=task.get("train_on_disparity", False),
-            )
-
-            task_list.append(_task)
-        args["tasks"] = task_list
+        args["tasks"] = read_tasks(args["tasks"])
 
     return args
 
@@ -79,7 +86,6 @@ def prepare_dataset(dataset_root, dataset, target_size=None, **args):
         )
     # __________________________________________________________________________
     if args.get("validation", False):
-
         print("Preparing validation dataset...")
 
         val_dataset = Dataset(
@@ -121,15 +127,9 @@ def get_last_exp(logpath):
     return last_number + 1
 
 
-def debug():
-
+def train(args):
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    DEVICE = 3
-
-    import pytorch_lightning as pl
-
-    # Read CLI and json args
-    args = read_args()
+    DEVICE = 2
 
     # Generate log path
 
@@ -151,10 +151,15 @@ def debug():
 
     # Try to train some network
     model = ConvNext(
-        tasks=tasks, features=args["features"], pretrained_encoder=False
+        tasks=tasks,
+        features=args["features"],
+        pretrained_encoder=True,
+        encoder_name=args.get("encoder_name"),
     ).to_gpu(DEVICE)
 
     trainer = pl.Trainer(
+        # limit_train_batches=100,
+        # limit_val_batches=100,
         max_epochs=args["epochs"],
         accelerator="gpu",
         devices=[DEVICE],
@@ -162,66 +167,118 @@ def debug():
     )
 
     trainer.fit(
-        model=model, train_dataloaders=train_loader, val_dataloaders=val_loader
+        model=model,
+        train_dataloaders=train_loader,
+        val_dataloaders=val_loader,
     )
 
     print("DONE!")
 
 
-def test():
+def test(args):
     """"""
-    DEVICE = 1
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    network_path = "/home/luiz.decker/code/DepthTasks/lightning_logs/version_23/checkpoints/epoch=99-step=796700.ckpt"
+    DEVICE = 0
 
-    # Read CLI and json args
-    args = read_args()
+    # Get model path
+    model_path = args["evaluate_path"]
 
-    # Build a task
-    decoder = UnetDecoder
+    # Locate experiment folder
+    exp_path = args["evaluate_path"].split("lightning")[0]
 
-    task = DenseRegression(
-        decoder=decoder, features=args["features"][-1], channels=1
+    # Load experiment args
+    exp_args = read_json(os.path.join(exp_path, "args.json"))
+    args.update(exp_args)
+    args["tasks"] = read_tasks(args["tasks"])
+
+    # Get model weights
+    print("Loading model weights")
+    model_weights = torch.load(model_path)
+
+    # Build a model and load weights
+    # TODO: Get model from args
+    model = ConvNext(
+        tasks=args["tasks"],
+        features=args["features"],
+        pretrained_encoder=False,
+    )
+    model.load_state_dict(model_weights["state_dict"])
+
+    # Load datasets
+    # TODO: load by args
+    # TODO: Fix this args override mess!
+
+    print("Loading NYU validation dataset")
+    args["split_json"] = "/home/luiz.decker/code/DepthTasks/configs/nyu.json"
+    args["dataset_root"] = "/hadatasets/nyu"
+    nyu_val_ds = NYUDepthV2(split="validation", **args)
+    nyu_dataloader = nyu_val_ds.build_dataloader(
+        batch_size=args["batch_size"],
+        shuffle=False,
+        num_workers=args.get("num_workers", multiprocessing.cpu_count()),
     )
 
-    # Prepare dataloaders
-    train_loader, val_loader, test_loader = prepare_dataset(
-        train=True, validation=True, **args
+    print("Loading MidAir validation dataset")
+    args[
+        "split_json"
+    ] = "/home/luiz.decker/code/DepthTasks/configs/midair_splits.json"
+    args["dataset_root"] = "/hadatasets/midair/MidAir"
+    midair_val_ds = MidAir(split="validation", **args)
+    midair_dataloader = midair_val_ds.build_dataloader(
+        batch_size=args["batch_size"],
+        shuffle=False,
+        num_workers=args.get("num_workers", multiprocessing.cpu_count()),
     )
 
-    # Try to train some network
-    model = ConvNext(tasks=[task], features=args["features"]).to_gpu(DEVICE)
+    print("Loading HyperSim validation dataset")
+    args[
+        "split_json"
+    ] = "/home/luiz.decker/code/DepthTasks/configs/hypersim_splits_nonan.json"
+    args["dataset_root"] = "/hadatasets/hypersim"
+    hypersim_val_ds = HyperSim(split="validation", **args)
+    hypersim_dataloader = hypersim_val_ds.build_dataloader(
+        batch_size=args["batch_size"],
+        shuffle=False,
+        num_workers=args.get("num_workers", multiprocessing.cpu_count()),
+    )
 
-    state_dict = torch.load(network_path)["state_dict"]
+    print("Loading KITTI validation dataset")
+    args[
+        "split_file"
+    ] = "/home/luiz.decker/code/DepthTasks/configs/kitti_eigen_val.txt"
+    args["dataset_root"] = "/hadatasets/kitti"
+    kitti_val_ds = Kitti(split="validation", **args)
 
-    model.load_state_dict(state_dict=state_dict)
+    # Create trainer object
+    trainer = pl.Trainer(
+        max_epochs=1,
+        accelerator="gpu",
+        devices=[DEVICE],
+    )
 
-    model = model.eval()
+    # Test on each dataset
+    global_metrics_nyu, sample_metrics_nyu = eval_dataset(model, nyu_val_ds)
+    global_metrics_midair, sample_metrics_midair = eval_dataset(
+        model, midair_val_ds
+    )
+    global_metrics_hypersim, sample_metrics_hypersim = eval_dataset(
+        model, hypersim_val_ds
+    )
 
-    val_iter = iter(val_loader)
+    global_metrics_kitti, sample_metrics_kitti = eval_dataset(
+        model, kitti_val_ds
+    )
 
-    metrics = {"rmse": [], "mape": []}
-
-    rmse = torchmetrics.MeanSquaredError(squared=False)
-    mape = torchmetrics.MeanAbsolutePercentageError()
-
-    with torch.no_grad():
-
-        for batch in track(val_iter, description="Evaluating..."):
-            x, y = batch
-
-            _y = model(x.cuda(DEVICE)).detach().cpu()
-
-            for i in range(len(_y)):
-                metrics["rmse"].append(float(rmse(_y[i], y[i])))
-                metrics["mape"].append(float(mape(_y[i], y[i])))
-
-    metrics["global_rmse"] = float(rmse.compute())
-    metrics["global_mape"] = float(mape.compute())
-
-    print("Done!")
+    print("--->nyu", global_metrics_nyu)
+    print("--->midair", global_metrics_midair)
+    print("--->hypersim", global_metrics_hypersim)
+    print("--->kitti",global_metrics_kitti)
 
 
 if __name__ == "__main__":
-    args = debug()
+    args = read_args()
+    if args["evaluate_path"]:
+        test(args)
+    else:
+        train(args)
     print("Done!")

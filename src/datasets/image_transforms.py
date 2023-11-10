@@ -10,8 +10,9 @@ except ImportError:
 
 
 class ImageTransformer(object):
-    def __init__(self, split):
+    def __init__(self, split, augmentation=False):
         self.split = split
+        self.augmentation = augmentation
         assert self.split in [
             "train",
             "test",
@@ -30,9 +31,19 @@ class ImageTransformer(object):
         else:
             return transforms.Compose([ToTensor()])
 
+    def get_augmentation_transform(self):
+        if self.split == "train":
+            return transforms.Compose([ImageAugmentation()])
+        return transforms.Compose([])
+
     def get_transform(self):
         joint_transform = self.get_joint_transform()
         img_transform = self.get_img_transform()
+        if self.augmentation:
+            augmentation_transform = self.get_augmentation_transform()
+            return transforms.Compose(
+                [joint_transform, augmentation_transform, img_transform]
+            )
 
         return transforms.Compose([joint_transform, img_transform])
 

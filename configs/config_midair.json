@@ -1,7 +1,7 @@
 {
     "expname": "convnext_depth_midair_scratch",
     "dataset": "midair",
-    "num_workers": 8,
+    "num_workers": 16,
     "target_size": [
         256,
         256
@@ -26,7 +26,15 @@
             "name": "depth",
             "train_on_disparity": false,
             "loss": null,
-            "metrics": null,
+            "metrics": [
+                "rmse",
+                "logrmse",
+                "absrel",
+                "squaredrel",
+                "a1",
+                "a2",
+                "a3"
+            ],
             "channels": 1,
             "features": [
                 "depth_l"
