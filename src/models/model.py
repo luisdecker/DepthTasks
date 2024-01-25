@@ -1,10 +1,8 @@
 "Definition a abstract model and implementation of common model functions"
 
-import os
+from ctypes.wintypes import tagPOINT
 from pytorch_lightning import LightningModule
 import torch
-
-from file_utils import save_json
 
 
 class Model(LightningModule):
@@ -25,7 +23,7 @@ class Model(LightningModule):
 
         self.features = args["features"]
 
-        self.savepath = args.get('savepath')
+        self.savepath = args.get("savepath")
 
     def training_step(self, batch, batch_i):
         """One step of training"""
@@ -48,7 +46,7 @@ class Model(LightningModule):
 
     def test_step(self, batch, batch_idx):
         return self.validation_step(batch, batch_idx)
-    
+
     def on_test_epoch_end(self, outputs=None):
         if outputs:
             _metrics = {}
@@ -56,7 +54,8 @@ class Model(LightningModule):
             for task in self.tasks:
                 if outputs and isinstance(outputs[0], dict):
                     task_losses = [
-                        output[f"val_step_{task.name}_loss"] for output in outputs
+                        output[f"val_step_{task.name}_loss"]
+                        for output in outputs
                     ]
                     _metrics[f"test_{task.name}_loss"] = torch.stack(
                         task_losses
@@ -69,7 +68,6 @@ class Model(LightningModule):
                         ] = metric.compute()
                         metric.reset()
             self.log_dict(_metrics)
-        
 
     def training_epoch_end(self, outputs):
         """"""
@@ -156,6 +154,12 @@ class Model(LightningModule):
 
             task_pred = task_pred.squeeze(dim=1)
             task_true = task_true.squeeze(dim=1)
+
+            if hasattr(task, "num_classes"):
+                task_true = task_true.flatten()
+                task_pred = task_pred.swapaxes(-1, -3)
+                task_pred = task_pred.reshape(-1, task.num_classes)
+
             total_loss += self.metrics[task.name]["loss"](task_pred, task_true)
 
         return total_loss
@@ -205,6 +209,15 @@ class Model(LightningModule):
             task_metrics = self.metrics[task.name]
             _metrics = {}
             for metric_name, metric in task_metrics.items():
+                if metric_name == "loss" and hasattr(task, "num_classes"):
+                    _metrics[metric_name] = metric(
+                        task_pred.squeeze(dim=1)
+                        .swapaxes(-1, -3)
+                        .reshape(-1, task.num_classes),
+                        task_true.squeeze(dim=1).flatten(),
+                    )
+                    continue
+
                 _metrics[metric_name] = metric(
                     task_pred.squeeze(dim=1), task_true.squeeze(dim=1)
                 )

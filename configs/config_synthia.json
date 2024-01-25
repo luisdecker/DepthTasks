@@ -1,5 +1,6 @@
 {
-    "expname": "NEW_convnext-BASE_depth_synthia'",
+    "expname": "CROP_convnext-BASE_depth_synthia",
+    "crop_center": true,
     "dataset": "synthia",
     "augmentation": false,
     "encoder_name": "base",

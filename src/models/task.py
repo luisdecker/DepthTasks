@@ -1,16 +1,17 @@
 "Definition of a model task"
 
-from functools import partial
 import torchmetrics
-import torch.nn as nn
-from torchgeometry.losses import SSIM
+import torchmetrics.classification
 
-from models.losses import GlobalMeanRemovedLoss
+from models.losses import CombinedLoss, FocalLoss
 
 
 def get_task(task: str):
     "Gets a task class from a string"
-    available_tasks = {"dense_regression": DenseRegression}
+    available_tasks = {
+        "dense_regression": DenseRegression,
+        "dense_classification": DenseClassification,
+    }
     return available_tasks[task.lower()]
 
 
@@ -57,11 +58,25 @@ class DenseRegression(Task):
         self.mask_feature = args["mask_feature"]
 
 
-class CombinedLoss(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
+class DenseClassification(Task):
+    "Simple dense classification task"
 
-    def forward(self, a, b):
-        huber = nn.functional.huber_loss(a, b)
-        ssim = SSIM(11, reduction="mean")(a, b)
-        return huber + ssim
+    def __init__(self, **args) -> None:
+        super().__init__(**args)
+
+        # Default loss if none specified
+        self.loss = args.get("loss") or FocalLoss()
+        # Metrics
+        self.metric = args.get("metrics") or {}
+
+        self.name = args.get("name") or "dense_classification"
+
+        self.mask_feature = args["mask_feature"]
+
+        self.num_classes = self.channels
+
+    def compute_loss(self, pred, true):
+        "Flattens the tensors and compute the loss"
+        pred = pred.reshape(-1, self.num_classes)
+        true = true.flatten()
+        return self.loss(pred.float(), true)

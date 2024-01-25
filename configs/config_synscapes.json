@@ -1,9 +1,10 @@
 {
-    "expname": "NEW_convnext-BASE_depth_synscapes'",
+    "expname": "CROP_convnext-BASE_depth_synscapes'",
+    "crop_center": true,
     "dataset": "synscapes",
     "augmentation": false,
     "encoder_name": "base",
-    "num_workers": 8,
+    "num_workers": 4,
     "target_size": [
         256,
         256

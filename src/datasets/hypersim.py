@@ -1,19 +1,15 @@
 "Dataloading utilities for Hypersim dataset"
 
-from glob import glob
 import json
 import os
-from pathlib import Path
 
 import skimage
 import numpy as np
 from PIL import Image
 import h5py
 
-import torch
-from torch.utils.data import DataLoader
+from datasets.dataset import Dataset
 
-from datasets.image_transforms import ImageTransformer
 
 "Utility Functions_____________________________________________________________"
 
@@ -44,68 +40,62 @@ def get_data_from_row(dataset_path, scene, camera, id):
     return {"depth_l": depth, "image_l": rgb, "seg_l": semantic}
 
 
-def gen_file_list(dataset_path, scenes):
-    """
-    Generates a file list with all the images from the dataset
-
-    The file in the list contains:
-        - Scene name
-        - Depth L
-        - Image L
-        - Image R
-        - Segmentation L
-
-
-    """
-    file_list = [get_data_from_row(dataset_path, *row) for row in scenes]
-
-    return file_list
-
-
 "MidAir Loader _____________________________________________________________"
 
 
-class HyperSim:
+class HyperSim(Dataset):
     "Dataloader for hypersim dataset"
 
     def __init__(self, dataset_root, split, split_json, **args):
         """"""
-        self.dataset_root = dataset_root
+        super().__init__(dataset_root, split, split_json, **args)
         self.scenes = get_split_from_json(split, split_json)
-        self.file_list = gen_file_list(self.dataset_root, self.scenes)
-        self.target_size = args.get("target_size")
-        self.features = args["features"]
-        self.split = split
-        self.depth_clip = args.get("depth_clip")
-        self.mask_sky = args.get("mask_sky")
-        self.augmentation = args.get("augmentation", False)
 
-        self.image_transformer = ImageTransformer(
-            self.split, augmentation=self.augmentation
-        ).get_transform()
+    def gen_file_list(self, dataset_path, split_json, split):
+        """
+        Generates a file list with all the images from the dataset
 
-    def __len__(self):
-        return len(self.file_list)
+        The file in the list contains:
+            - Scene name
+            - Depth L
+            - Image L
+            - Image R
+            - Segmentation L
 
-    @staticmethod
-    def _load_image(image_path, resize_shape=None):
-        """"""
-        # Loads image
-        assert os.path.isfile(image_path), f"{image_path} is not a file!"
-        img = Image.open(image_path)
 
-        # Resizes if shape is provided
-        if resize_shape:
-            img = img.resize(resize_shape, resample=Image.BICUBIC)
+        """
+        scenes = get_split_from_json(split, split_json)
+        file_list = [get_data_from_row(dataset_path, *row) for row in scenes]
 
-        return img
+        return file_list
 
-    @staticmethod
-    def _load_hdf5(image_path, resize_shape=None, is_depth=False):
+    def _load_image(self, image_path, resize_shape, feature):
+        """Load a sample"""
+        if image_path.endswith(".jpg"):
+            # Loads image
+            assert os.path.isfile(image_path), f"{image_path} is not a file!"
+            img = Image.open(image_path)
+
+            if self.crop_center:
+                img = Image.fromarray(self._crop_center(img))
+
+            # Resizes if shape is provided
+            if resize_shape:
+                img = img.resize(resize_shape, resample=Image.BICUBIC)
+
+            return img
+        else:
+            return self._load_hdf5(image_path, resize_shape, feature)
+
+    def _load_hdf5(self, image_path, resize_shape, feature):
+        "Load an hdf5 image"
+        is_depth = feature.startswith("depth")
         with h5py.File(image_path) as f:
             img = f["dataset"][()].astype(np.float32)
+            if self.crop_center:
+                img = self._crop_center(img)
             if is_depth:
-                img = HyperSim._distance_to_depth(img)
+                img = HyperSim._distance_to_depth(img, self.crop_center)
                 if np.isnan(img).any():
                     mask = np.isnan(img)
                     try:
@@ -121,11 +111,13 @@ class HyperSim:
             return img
 
     @staticmethod
-    def _distance_to_depth(distance):
+    def _distance_to_depth(distance, crop_center=False):
         "Converts from distance to camera point to distance to camera plane"
 
         intWidth = 1024
         intHeight = 768
+        if crop_center:
+            intWidth = 768
         fltFocal = 886.81
 
         imgPlaneX = (
@@ -151,48 +143,3 @@ class HyperSim:
         imagePlane = np.concatenate([imgPlaneX, imgPlaneY, imgPlaneZ], 2)
 
         return distance / np.linalg.norm(imagePlane, 2, 2) * fltFocal
-
-    def __getitem__(self, idx):
-        data_paths = self.file_list[idx]
-
-        input_features, label_features = self.features
-
-        input_data = self.get_data_from_features(data_paths, input_features)
-        input_data = torch.stack([input_data[f] for f in input_features])
-
-        label_data = self.get_data_from_features(data_paths, label_features)
-        label_data = torch.stack([label_data[f] for f in label_features])
-
-        return input_data, label_data
-
-    def get_data_from_features(self, data_paths, features):
-        data = {}
-        for feature in features:
-            read_data = (
-                HyperSim._load_image(data_paths[feature], self.target_size)
-                if data_paths[feature].endswith(".jpg")
-                else HyperSim._load_hdf5(
-                    data_paths[feature],
-                    self.target_size,
-                    is_depth=feature.startswith("depth"),
-                )
-            )
-
-            # Depth clipping
-            if feature.startswith("depth") and self.depth_clip:
-                depth = np.array(read_data)
-                np.clip(depth, a_min=0, a_max=self.depth_clip)
-                read_data = Image.fromarray(depth).convert("F")
-
-            data[feature] = read_data
-
-        return self.image_transformer(data)
-
-    def build_dataloader(self, shuffle, batch_size, num_workers):
-        return DataLoader(
-            self,
-            batch_size=batch_size,
-            shuffle=shuffle,
-            num_workers=num_workers,
-            pin_memory=True,
-        )

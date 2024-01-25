@@ -10,6 +10,14 @@ from torch.utils.data import DataLoader
 from datasets.image_transforms import ImageTransformer
 
 
+def _crop_center(img):
+    "Generates a central crop of the image"
+    height, width = img.shape[:2]
+    crop1 = (width - height) // 2
+    crop2 = (width - height) // 2 + height
+    return img[:, crop1:crop2]
+
+
 class NYUDepthV2:
     "Dataloader for nyu dataset"
 
@@ -25,8 +33,12 @@ class NYUDepthV2:
         self.features = kwargs["features"]
         self.depth_clip = kwargs.get("depth_clip")
         self.mask_sky = kwargs.get("mask_sky")
+        self.crop_center = kwargs.get("crop_center", False)
+        self.augmentation = kwargs.get("augmentation", False)
 
-        self.image_transformer = ImageTransformer(self.split).get_transform()
+        self.image_transformer = ImageTransformer(
+            self.split, augmentation=self.augmentation
+        ).get_transform()
 
         self.images, self.depths = self.load_data()
 
@@ -47,6 +59,8 @@ class NYUDepthV2:
         images = np.transpose(images, axes=(0, 3, 2, 1))  # n, 3, h, w
         images_resized = []
         for image in images:
+            if self.crop_center:
+                image = _crop_center(image)
             image = Image.fromarray(image)
             images_resized.append(
                 np.array(

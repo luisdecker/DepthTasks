@@ -4,15 +4,17 @@ import torch.nn as nn
 
 from models.layers import UpsampleConv, ConvNextBlock, UpscaleConvNext
 
-def get_decoder(decoder:str):
+
+def get_decoder(decoder: str):
     "Gets a decoder class by name"
 
     available_decoders = {
-        'simple': SimpleDecoder,
-        'unet': UnetDecoder,
-        'convnext': ConvNextDecoder
+        "simple": SimpleDecoder,
+        "unet": UnetDecoder,
+        "convnext": ConvNextDecoder,
     }
     return available_decoders[decoder.lower()]
+
 
 class Decoder(nn.Module):
     def __init__(self, input_channels, output_channels, skip_dimensions=None):
@@ -40,7 +42,6 @@ class SimpleDecoder(Decoder):
         )
 
     def forward(self, x, encoder_partial_maps):
-
         x = self.upconv1(x)
         x = x + encoder_partial_maps[-1]
         x = self.upconv2(x)
@@ -56,8 +57,8 @@ class UnetDecoder(Decoder):
     def __init__(self, input_channels, output_channels, skip_dimensions):
         super().__init__(input_channels, output_channels, skip_dimensions)
 
-        assert (
-            type(skip_dimensions) == list
+        assert isinstance(
+            skip_dimensions, list
         ), "skip_dimensions must be a list with [(map_channels, map_factor)]"
 
         self.activation = nn.GELU  # TODO: Parametrize this!
@@ -82,7 +83,6 @@ class UnetDecoder(Decoder):
             num_upscales = factor // 2
 
             for j in range(num_upscales):
-
                 stage_layers.append(
                     UpsampleConv(
                         in_channels,
@@ -103,13 +103,21 @@ class UnetDecoder(Decoder):
                         )
                     ]
                 )
-
+        # self.forward()
         self.layers = nn.ModuleList(
             [nn.Sequential(*stage) for stage in self.layers]
         )
         self.apply(self._init_weights)
 
     def forward(self, x, encoder_partial_maps):
+        """Fowards and example trought the network
+        Args:
+            x (Torch.tensor): Input data
+            encoder_partial_maps (list): Partial maps from encoder (skip connections)
+
+        Returns:
+            Torch.tensor: Output of network
+        """
 
         encoder_partial_maps = list(reversed(encoder_partial_maps))
 
@@ -119,8 +127,10 @@ class UnetDecoder(Decoder):
 
         # Last layer does not have a skip connection
         x = self.layers[-2](x)
+        x = self.layers[-1](x)
         # Pointwise
-        x = x.mean(axis=1).unsqueeze(dim=1)
+        # x = x.mean(axis=1).unsqueeze(dim=1)
+        # x = x.unsqueeze(dim=1)
 
         return x
 
@@ -162,7 +172,6 @@ class ConvNextDecoder(Decoder):
             num_upscales = factor // 2
 
             for j in range(num_upscales):
-
                 stage_layers.append(UpscaleConvNext(in_channels))
                 if j == num_upscales - 1:
                     stage_layers.append(
@@ -193,7 +202,6 @@ class ConvNextDecoder(Decoder):
         self.apply(self._init_weights)
 
     def forward(self, x, encoder_partial_maps):
-
         encoder_partial_maps = list(reversed(encoder_partial_maps))
 
         for i, stage in enumerate(self.layers[:-2]):

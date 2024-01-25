@@ -12,12 +12,15 @@ from datasets.nyu import NYUDepthV2
 from datasets.midair import MidAir
 from datasets.hypersim import HyperSim
 from datasets.kitti import Kitti
+from datasets.virtual_kitti import VirtualKitti
+from datasets.synthia import Synthia
+from datasets.synscapes import Synscapes
 from eval_utils import eval_dataset
 
 from metrics import get_metric
 from file_utils import read_json, save_json
+from models import get_loss
 from models.convNext import ConvNext
-from models.resnet import Resnet
 from models.decoder import get_decoder
 from models.task import get_task
 
@@ -29,6 +32,7 @@ def read_tasks(args_tasks):
         Task = get_task(task["type"])
         Decoder = get_decoder(task["decoder"]["type"])
         metrics = {name: get_metric(name)() for name in task["metrics"]}
+        loss = get_loss(task["loss"], **task.get("loss_params", {}))
 
         _task = Task(
             name=task["name"],
@@ -39,6 +43,7 @@ def read_tasks(args_tasks):
             mask_feature=task.get("mask_feature"),
             decoder_args=task["decoder"]["args"],
             train_on_disparity=task.get("train_on_disparity", False),
+            loss=loss,
         )
 
         task_list.append(_task)
@@ -50,6 +55,7 @@ def read_args():
 
     parser.add_argument("--config", type=str)
     parser.add_argument("--evaluate_path", type=str, default=None)
+    parser.add_argument("--gpu", type=str, default=0)
 
     args = vars(parser.parse_args())
     if not args["evaluate_path"]:
@@ -129,7 +135,7 @@ def get_last_exp(logpath):
 
 def train(args):
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    DEVICE = 2
+    DEVICE = int(args["gpu"])
 
     # Generate log path
 
@@ -178,7 +184,7 @@ def train(args):
 def test(args):
     """"""
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    DEVICE = 0
+    DEVICE = int(args["gpu"])
 
     # Get model path
     model_path = args["evaluate_path"]
@@ -193,7 +199,9 @@ def test(args):
 
     # Get model weights
     print("Loading model weights")
-    model_weights = torch.load(model_path)
+    model_weights = torch.load(
+        model_path, map_location=torch.device(f"cuda:{DEVICE}")
+    )
 
     # Build a model and load weights
     # TODO: Get model from args
@@ -201,34 +209,44 @@ def test(args):
         tasks=args["tasks"],
         features=args["features"],
         pretrained_encoder=False,
-    )
+        encoder_name=args.get("encoder_name"),
+    ).to_gpu(DEVICE)
     model.load_state_dict(model_weights["state_dict"])
 
     # Load datasets
     # TODO: load by args
     # TODO: Fix this args override mess!
 
+    # Test on each dataset
+
+    print("Loading Virtual KITTI validation dataset")
+    args[
+        "split_json"
+    ] = "/home/luiz.decker/code/DepthTasks/configs/virtual_kitty_splits.json"
+    args["dataset_root"] = "/hadatasets/virtual_kitty/"
+    virtual_kitti_val_ds = VirtualKitti(split="validation", **args)
+    global_metrics_virtualkitti, sample_metrics_virtualkitti = eval_dataset(
+        model, virtual_kitti_val_ds
+    )
+    del virtual_kitti_val_ds
+
+    print("Loading synscapes validation dataset")
+    args[
+        "split_json"
+    ] = "/home/luiz.decker/code/DepthTasks/configs/synscapes_split.json"
+    args["dataset_root"] = "/hadatasets/synscapes/"
+    synscapes_val_ds = Synscapes(split="validation", **args)
+    global_metrics_synscapes, sample_metrics_synscapes = eval_dataset(
+        model, synscapes_val_ds
+    )
+    del synscapes_val_ds
+
     print("Loading NYU validation dataset")
     args["split_json"] = "/home/luiz.decker/code/DepthTasks/configs/nyu.json"
     args["dataset_root"] = "/hadatasets/nyu"
     nyu_val_ds = NYUDepthV2(split="validation", **args)
-    nyu_dataloader = nyu_val_ds.build_dataloader(
-        batch_size=args["batch_size"],
-        shuffle=False,
-        num_workers=args.get("num_workers", multiprocessing.cpu_count()),
-    )
-
-    print("Loading MidAir validation dataset")
-    args[
-        "split_json"
-    ] = "/home/luiz.decker/code/DepthTasks/configs/midair_splits.json"
-    args["dataset_root"] = "/hadatasets/midair/MidAir"
-    midair_val_ds = MidAir(split="validation", **args)
-    midair_dataloader = midair_val_ds.build_dataloader(
-        batch_size=args["batch_size"],
-        shuffle=False,
-        num_workers=args.get("num_workers", multiprocessing.cpu_count()),
-    )
+    global_metrics_nyu, sample_metrics_nyu = eval_dataset(model, nyu_val_ds)
+    del nyu_val_ds
 
     print("Loading HyperSim validation dataset")
     args[
@@ -236,43 +254,52 @@ def test(args):
     ] = "/home/luiz.decker/code/DepthTasks/configs/hypersim_splits_nonan.json"
     args["dataset_root"] = "/hadatasets/hypersim"
     hypersim_val_ds = HyperSim(split="validation", **args)
-    hypersim_dataloader = hypersim_val_ds.build_dataloader(
-        batch_size=args["batch_size"],
-        shuffle=False,
-        num_workers=args.get("num_workers", multiprocessing.cpu_count()),
-    )
-
-    print("Loading KITTI validation dataset")
-    args[
-        "split_file"
-    ] = "/home/luiz.decker/code/DepthTasks/configs/kitti_eigen_val.txt"
-    args["dataset_root"] = "/hadatasets/kitti"
-    kitti_val_ds = Kitti(split="validation", **args)
-
-    # Create trainer object
-    trainer = pl.Trainer(
-        max_epochs=1,
-        accelerator="gpu",
-        devices=[DEVICE],
-    )
-
-    # Test on each dataset
-    global_metrics_nyu, sample_metrics_nyu = eval_dataset(model, nyu_val_ds)
-    global_metrics_midair, sample_metrics_midair = eval_dataset(
-        model, midair_val_ds
-    )
     global_metrics_hypersim, sample_metrics_hypersim = eval_dataset(
         model, hypersim_val_ds
     )
+    del hypersim_val_ds
 
+    print("Loading KITTI validation dataset")
+    args[
+        "split_json"
+    ] = "/home/luiz.decker/code/DepthTasks/configs/kitti_eigen_val.txt"
+    args["dataset_root"] = "/hadatasets/kitti"
+    kitti_val_ds = Kitti(split="validation", **args)
     global_metrics_kitti, sample_metrics_kitti = eval_dataset(
         model, kitti_val_ds
     )
+    del kitti_val_ds
+
+    print("Loading synthia validation dataset")
+    args[
+        "split_json"
+    ] = "/home/luiz.decker/code/DepthTasks/configs/synthia_splits.json"
+    args["dataset_root"] = "/hadatasets/SYNTHIA-AL/"
+    synthia_val_ds = Synthia(split="validation", **args)
+    global_metrics_synthia, sample_metrics_synthia = eval_dataset(
+        model, synthia_val_ds
+    )
+    del synthia_val_ds
+
+    print("Loading MidAir validation dataset")
+    args[
+        "split_json"
+    ] = "/home/luiz.decker/code/DepthTasks/configs/midair_splits.json"
+    args["dataset_root"] = "/hadatasets/midair/MidAir"
+    midair_val_ds = MidAir(split="validation", **args)
+    global_metrics_midair, sample_metrics_midair = eval_dataset(
+        model, midair_val_ds
+    )
+    del midair_val_ds
 
     print("--->nyu", global_metrics_nyu)
     print("--->midair", global_metrics_midair)
+    # print("--->midair", "!!!MIDAIR DESATIVADO!!!")
     print("--->hypersim", global_metrics_hypersim)
-    print("--->kitti",global_metrics_kitti)
+    print("--->kitti", global_metrics_kitti)
+    print("--->virtual kitti", global_metrics_virtualkitti)
+    print("--->synscapes", global_metrics_synscapes)
+    print("--->synthia", global_metrics_synthia)
 
 
 if __name__ == "__main__":

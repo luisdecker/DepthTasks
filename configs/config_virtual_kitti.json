@@ -1,5 +1,6 @@
 {
-    "expname": "NEW_convnext-BASE_depth_virtualkitti'",
+    "expname": "CROP_convnext-BASE_depth_virtualkitti'",
+    "crop_center": true,
     "dataset": "virtualkitti",
     "augmentation": false,
     "encoder_name": "base",
