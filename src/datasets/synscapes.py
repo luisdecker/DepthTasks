@@ -17,6 +17,7 @@ def gen_paths_from_id(root, idx):
     rgb_path = os.path.join(root, f"img/rgb/{idx}.png")
     depth_path = os.path.join(root, f"img/depth/{idx}.npy")
     seg_path = os.path.join(root, f"img/class/{idx}.png")
+
     return {"image_l": rgb_path, "depth_l": depth_path, "seg_l": seg_path}
 
 

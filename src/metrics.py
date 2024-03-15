@@ -10,9 +10,9 @@ def get_metric(metric):
     """Gets a metric class by a string identifier"""
 
     return {
-        "a1": get_alpha(1),
-        "a2": get_alpha(2),
-        "a3": get_alpha(3),
+        "a1": Alpha1,
+        "a2": Alpha2,
+        "a3": Alpha3,
         "logrmse": MeanSquaredLogError,
         "absrel": AbsoluteRelative,
         "squaredrel": AbsoluteRelativeSquared,
@@ -26,8 +26,8 @@ class AlphaError(Metric):
 
     def __init__(self, power):
         super().__init__()
-        self.add_state("sum", default=torch.tensor(0.), dist_reduce_fx="sum")
-        self.add_state("n", default=torch.tensor(0.), dist_reduce_fx="sum")
+        self.add_state("sum", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state("n", default=torch.tensor(0.0), dist_reduce_fx="sum")
         self.power = power
 
     def update(self, pred, gt):
@@ -42,12 +42,19 @@ class AlphaError(Metric):
         return self.sum / self.n
 
 
-def get_alpha(power):
-    class AlphaX(AlphaError):
-        def __init__(self):
-            super().__init__(power)
+class Alpha1(AlphaError):
+    def __init__(self):
+        super().__init__(1)
 
-    return AlphaX
+
+class Alpha2(AlphaError):
+    def __init__(self):
+        super().__init__(2)
+
+
+class Alpha3(AlphaError):
+    def __init__(self):
+        super().__init__(3)
 
 
 class RMSE(MeanSquaredError):
@@ -60,15 +67,15 @@ class LogRMSE(Metric):
 
     def __init__(self):
         super().__init__()
-        self.add_state("sum", default=torch.tensor(0.))
-        self.add_state("n", default=torch.tensor(0.), dist_reduce_fx="sum")
+        self.add_state("sum", default=torch.tensor(0.0))
+        self.add_state("n", default=torch.tensor(0.0), dist_reduce_fx="sum")
 
     def update(self, pred, gt):
         "Updates the internal states"
         self.sum += torch.sqrt(((torch.log(gt) - torch.log(pred)) ** 2)).sum()
         self.n += gt.numel()
 
-    def compute(self):
+    def compute(self):  
         "Computes the final metric"
         return self.sum / self.n
 
@@ -78,8 +85,8 @@ class AbsoluteRelative(Metric):
 
     def __init__(self):
         super().__init__()
-        self.add_state("sum", default=torch.tensor(0.))
-        self.add_state("n", default=torch.tensor(0.), dist_reduce_fx="sum")
+        self.add_state("sum", default=torch.tensor(0.0))
+        self.add_state("n", default=torch.tensor(0.0), dist_reduce_fx="sum")
 
     def update(self, pred, gt):
         "Updates the internal states"
@@ -96,8 +103,8 @@ class AbsoluteRelativeSquared(Metric):
 
     def __init__(self):
         super().__init__()
-        self.add_state("sum", default=torch.tensor(0.))
-        self.add_state("n", default=torch.tensor(0.), dist_reduce_fx="sum")
+        self.add_state("sum", default=torch.tensor(0.0))
+        self.add_state("n", default=torch.tensor(0.0), dist_reduce_fx="sum")
 
     def update(self, pred, gt):
         "Updates the internal states"

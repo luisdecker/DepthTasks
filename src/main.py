@@ -3,9 +3,13 @@
 import argparse
 import multiprocessing
 import os
+from matplotlib.font_manager import json_dump
 
 import pytorch_lightning as pl
 import torch
+from pytorch_lightning.callbacks import RichModelSummary, RichProgressBar
+
+import pandas as pd
 
 from datasets import get_dataloader
 from datasets.nyu import NYUDepthV2
@@ -56,6 +60,7 @@ def read_args():
     parser.add_argument("--config", type=str)
     parser.add_argument("--evaluate_path", type=str, default=None)
     parser.add_argument("--gpu", type=str, default=0)
+    parser.add_argument("--ckpt_path", type=str, default=None)
 
     args = vars(parser.parse_args())
     if not args["evaluate_path"]:
@@ -141,8 +146,8 @@ def train(args):
 
     logpath = os.path.join("logs", args["expname"])
 
-    logpath = os.path.join(logpath, f"_{get_last_exp(logpath)}")
-    os.makedirs(logpath, exist_ok=False)
+    # logpath = os.path.join(logpath, f"_{get_last_exp(logpath)}")
+    os.makedirs(logpath, exist_ok=True)
 
     # Saves the args in the path
     args_path = os.path.join(logpath, "args.json")
@@ -161,21 +166,27 @@ def train(args):
         features=args["features"],
         pretrained_encoder=True,
         encoder_name=args.get("encoder_name"),
-    ).to_gpu(DEVICE)
+    )
 
     trainer = pl.Trainer(
-        # limit_train_batches=100,
+        # limit_train_batches=1,
         # limit_val_batches=100,
         max_epochs=args["epochs"],
         accelerator="gpu",
-        devices=[DEVICE],
+        strategy="auto",
+        devices=[1,2,3,4],
         default_root_dir=logpath,
+        callbacks=[
+            RichModelSummary(max_depth=2),
+            RichProgressBar(refresh_rate=1, leave=True),
+        ],
     )
 
     trainer.fit(
         model=model,
         train_dataloaders=train_loader,
         val_dataloaders=val_loader,
+        ckpt_path=args["ckpt_path"],
     )
 
     print("DONE!")
@@ -196,7 +207,6 @@ def test(args):
     exp_args = read_json(os.path.join(exp_path, "args.json"))
     args.update(exp_args)
     args["tasks"] = read_tasks(args["tasks"])
-
     # Get model weights
     print("Loading model weights")
     model_weights = torch.load(
@@ -217,29 +227,19 @@ def test(args):
     # TODO: load by args
     # TODO: Fix this args override mess!
 
+    args["features"] = [["image_l"], ["depth_l"]]
     # Test on each dataset
 
     print("Loading Virtual KITTI validation dataset")
-    args[
-        "split_json"
-    ] = "/home/luiz.decker/code/DepthTasks/configs/virtual_kitty_splits.json"
+    args["split_json"] = (
+        "/home/luiz.decker/code/DepthTasks/configs/virtual_kitty_splits.json"
+    )
     args["dataset_root"] = "/hadatasets/virtual_kitty/"
     virtual_kitti_val_ds = VirtualKitti(split="validation", **args)
     global_metrics_virtualkitti, sample_metrics_virtualkitti = eval_dataset(
         model, virtual_kitti_val_ds
     )
     del virtual_kitti_val_ds
-
-    print("Loading synscapes validation dataset")
-    args[
-        "split_json"
-    ] = "/home/luiz.decker/code/DepthTasks/configs/synscapes_split.json"
-    args["dataset_root"] = "/hadatasets/synscapes/"
-    synscapes_val_ds = Synscapes(split="validation", **args)
-    global_metrics_synscapes, sample_metrics_synscapes = eval_dataset(
-        model, synscapes_val_ds
-    )
-    del synscapes_val_ds
 
     print("Loading NYU validation dataset")
     args["split_json"] = "/home/luiz.decker/code/DepthTasks/configs/nyu.json"
@@ -248,10 +248,21 @@ def test(args):
     global_metrics_nyu, sample_metrics_nyu = eval_dataset(model, nyu_val_ds)
     del nyu_val_ds
 
+    print("Loading synscapes validation dataset")
+    args["split_json"] = (
+        "/home/luiz.decker/code/DepthTasks/configs/synscapes_split.json"
+    )
+    args["dataset_root"] = "/hadatasets/synscapes/"
+    synscapes_val_ds = Synscapes(split="validation", **args)
+    global_metrics_synscapes, sample_metrics_synscapes = eval_dataset(
+        model, synscapes_val_ds
+    )
+    del synscapes_val_ds
+
     print("Loading HyperSim validation dataset")
-    args[
-        "split_json"
-    ] = "/home/luiz.decker/code/DepthTasks/configs/hypersim_splits_nonan.json"
+    args["split_json"] = (
+        "/home/luiz.decker/code/DepthTasks/configs/hypersim_splits_nonan.json"
+    )
     args["dataset_root"] = "/hadatasets/hypersim"
     hypersim_val_ds = HyperSim(split="validation", **args)
     global_metrics_hypersim, sample_metrics_hypersim = eval_dataset(
@@ -260,9 +271,9 @@ def test(args):
     del hypersim_val_ds
 
     print("Loading KITTI validation dataset")
-    args[
-        "split_json"
-    ] = "/home/luiz.decker/code/DepthTasks/configs/kitti_eigen_val.txt"
+    args["split_json"] = (
+        "/home/luiz.decker/code/DepthTasks/configs/kitti_eigen_val.txt"
+    )
     args["dataset_root"] = "/hadatasets/kitti"
     kitti_val_ds = Kitti(split="validation", **args)
     global_metrics_kitti, sample_metrics_kitti = eval_dataset(
@@ -271,9 +282,9 @@ def test(args):
     del kitti_val_ds
 
     print("Loading synthia validation dataset")
-    args[
-        "split_json"
-    ] = "/home/luiz.decker/code/DepthTasks/configs/synthia_splits.json"
+    args["split_json"] = (
+        "/home/luiz.decker/code/DepthTasks/configs/synthia_splits.json"
+    )
     args["dataset_root"] = "/hadatasets/SYNTHIA-AL/"
     synthia_val_ds = Synthia(split="validation", **args)
     global_metrics_synthia, sample_metrics_synthia = eval_dataset(
@@ -282,9 +293,9 @@ def test(args):
     del synthia_val_ds
 
     print("Loading MidAir validation dataset")
-    args[
-        "split_json"
-    ] = "/home/luiz.decker/code/DepthTasks/configs/midair_splits.json"
+    args["split_json"] = (
+        "/home/luiz.decker/code/DepthTasks/configs/midair_splits.json"
+    )
     args["dataset_root"] = "/hadatasets/midair/MidAir"
     midair_val_ds = MidAir(split="validation", **args)
     global_metrics_midair, sample_metrics_midair = eval_dataset(
@@ -300,6 +311,18 @@ def test(args):
     print("--->virtual kitti", global_metrics_virtualkitti)
     print("--->synscapes", global_metrics_synscapes)
     print("--->synthia", global_metrics_synthia)
+
+    pd.DataFrame(
+        {
+            "nyu": global_metrics_nyu,
+            "midair": global_metrics_midair,
+            "hypersim": global_metrics_hypersim,
+            "kitti": global_metrics_kitti,
+            "virtual_kitti": global_metrics_virtualkitti,
+            "synscapes": global_metrics_synscapes,
+            "synthia": global_metrics_synthia,
+        }
+    ).to_csv(os.path.join(exp_path, "metrics.csv"))
 
 
 if __name__ == "__main__":

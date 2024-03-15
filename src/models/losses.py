@@ -10,15 +10,16 @@ from torchgeometry.losses import SSIM
 from torch.nn import functional as F
 
 
-# TODO Move this to loss module
 class CombinedLoss(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, alpha=1e-3) -> None:
         super().__init__()
+        self.SSIM = SSIM(11, reduction="mean")
+        self.alpha = alpha
 
     def forward(self, a, b):
         huber = nn.functional.huber_loss(a, b)
-        ssim = SSIM(11, reduction="mean")(a, b)
-        return huber + ssim
+        ssim = self.SSIM(a, b)
+        return (self.alpha * huber) + ((1 - self.alpha) * ssim)
 
 
 class GlobalMeanRemovedLoss(torch.nn.Module):
@@ -120,6 +121,7 @@ class FocalLoss(nn.Module):
         focal_term = (1 - pt) ** self.gamma
 
         # the full loss: -alpha * ((1 - pt)^gamma) * log(pt)
+        # the full loss: ((1 - pt)^gamma) * -alpha  * log(pt)
         loss = focal_term * ce
 
         if self.reduction == "mean":

@@ -4,6 +4,7 @@ from glob import glob
 import json
 import os
 from pathlib import Path
+import cv2
 
 import numpy as np
 from PIL import Image
@@ -65,10 +66,18 @@ def get_data_from_id(id, climate_root, trajec):
     "Get the path from all the data from a id"
 
     return {
-        "depth_l": os.path.join(climate_root, "stereo_disparity", trajec, f"{id}.PNG"),
-        "image_l": os.path.join(climate_root, "color_left", trajec, f"{id}.JPEG"),
-        "image_r": os.path.join(climate_root, "color_right", trajec, f"{id}.JPEG"),
-        "seg_l": os.path.join(climate_root, "segmentation", trajec, f"{id}.PNG"),
+        "depth_l": os.path.join(
+            climate_root, "stereo_disparity", trajec, f"{id}.PNG"
+        ),
+        "image_l": os.path.join(
+            climate_root, "color_left", trajec, f"{id}.JPEG"
+        ),
+        "image_r": os.path.join(
+            climate_root, "color_right", trajec, f"{id}.JPEG"
+        ),
+        "seg_l": os.path.join(
+            climate_root, "segmentation", trajec, f"{id}.PNG"
+        ),
     }
 
 
@@ -110,7 +119,9 @@ class MidAir(Dataset):
                     ids = get_path_ids(climate_root, trajec)
 
                     for id in ids:
-                        all_paths_id = get_data_from_id(id, climate_root, trajec)
+                        all_paths_id = get_data_from_id(
+                            id, climate_root, trajec
+                        )
                         file_list.append(all_paths_id)
         return file_list
 
@@ -126,12 +137,15 @@ class MidAir(Dataset):
             img = 255 / img
 
             img = Image.fromarray(img.astype(np.float32))
+        if feature.startswith("seg"):
+            img = cv2.imread(image_path, cv2.IMREAD_ANYDEPTH)
+            img = Image.fromarray(img)
 
         # Resizes if shape is provided
         img = np.array(img)
         img = self._crop_center(img)
+        img = Image.fromarray(img)
         if resize_shape:
-            img = Image.fromarray(img)
             img = img.resize(resize_shape, resample=Image.BICUBIC)
 
         return img

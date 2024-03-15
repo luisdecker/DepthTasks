@@ -19,7 +19,7 @@ def gen_paths_from_id(root, idx):
     """
     idx["image_l"] = os.path.join(root, idx["image_l"])
     idx["depth_l"] = os.path.join(root, idx["depth_l"])
-    idx['seg_l'] = os.path.join(root, idx["seg_l"])
+    idx["seg_l"] = os.path.join(root, idx["seg_l"])
     return idx
 
 
@@ -32,6 +32,7 @@ class Synthia(Dataset):
     def __init__(self, dataset_root, split, split_json, **args):
         """"""
         super().__init__(dataset_root, split, split_json, **args)
+        self.num_classes = 15
 
     def gen_file_list(self, dataset_path, split_file, split):
         """
@@ -68,11 +69,25 @@ class Synthia(Dataset):
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(img)
 
+        if feature.startswith("seg"):
+            img = cv2.imread(image_path)
+            img = img[..., 2] - 1  # classes are 1-indexed
+            max_internal = img.max()
+            img = Image.fromarray(img)
+
         # Resizes if shape is provided
         img = np.array(img)
         img = self._crop_center(img)
         img = Image.fromarray(img)
         if resize_shape:
-            img = img.resize(resize_shape, resample=Image.BICUBIC)
+            resample = (
+                Image.BICUBIC if feature.startswith("image") else Image.NEAREST
+            )
+            img = img.resize(resize_shape, resample=resample)
+
+        if feature.startswith("seg"):
+            assert (
+                np.array(img).max() < 25
+            ), f"Classe errada, {np.array(img).max()} {max_internal}"
 
         return img

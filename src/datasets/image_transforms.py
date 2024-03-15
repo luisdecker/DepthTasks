@@ -1,7 +1,9 @@
 import random
+import torch
 import torchvision.transforms as transforms
 import torchvision.transforms.functional as functional
 from PIL import Image
+import numpy as np
 
 try:
     import accimage
@@ -97,11 +99,16 @@ class ToTensor(object):
             if d in [
                 "image_l",
                 "image_r",
+            ]:
+                data_item[d] = self.totensor(data_item[d])
+            if d in [
                 "depth_l",
                 "depth_r",
                 "seg_l",
                 "seg_r",
             ]:
-                data_item[d] = self.totensor(data_item[d])
+                data_item[d] = torch.Tensor(np.array(data_item[d]))
+                if len(data_item[d].shape) == 2:
+                    data_item[d] = data_item[d].unsqueeze(dim=0)
 
         return data_item

@@ -1,10 +1,10 @@
 {
-    "expname": "CROP_convnext-BASE_depth_virtualkitti'",
+    "expname": "NONORM_CROP_convnext-BASE_depth_virtualkitti",
     "crop_center": true,
     "dataset": "virtualkitti",
     "augmentation": false,
     "encoder_name": "base",
-    "num_workers": 8,
+    "num_workers": 16,
     "target_size": [
         256,
         256

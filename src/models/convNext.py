@@ -89,7 +89,10 @@ class ConvNext(Model):
 
         x = [decoder(x, partial_maps) for decoder in self.decoders]
 
-        # Reassemble to (batch, outputs, channels, h, w)
+        # Expand to largest feature size
+        x = self.expand_shape(x)
+
+        # Reassemble to (batch, tasks, channels, h, w)
         x = torch.swapaxes(torch.stack(x), 0, 1)
         return x
 

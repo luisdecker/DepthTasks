@@ -1,5 +1,6 @@
 "Definition of a model task"
 
+import torch
 import torchmetrics
 import torchmetrics.classification
 
@@ -65,7 +66,10 @@ class DenseClassification(Task):
         super().__init__(**args)
 
         # Default loss if none specified
-        self.loss = args.get("loss") or FocalLoss()
+        # self.loss = args.get("loss") or FocalLoss()
+        self.loss = args.get("loss") or torch.nn.CrossEntropyLoss(
+            ignore_index=-1
+        )
         # Metrics
         self.metric = args.get("metrics") or {}
 
