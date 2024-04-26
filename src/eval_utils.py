@@ -42,6 +42,8 @@ def eval_dataset(network, dataset, batch_size=100):
 
                     #                   all,task,feat,all
                     pred = network(image)[:, 0, 0, ...]
+                    if network.tasks[0].train_on_disparity:
+                        gt = 1 / gt
 
                     for sample in range(batch_size):
 
@@ -56,8 +58,8 @@ def eval_dataset(network, dataset, batch_size=100):
                         valid_pred = sample_pred[valid_gt_map]
                         # Compute each metric for the sample
                         for metric_name, metric in metrics.items():
-                            sample_metrics[metric_name] = (
-                                metric(valid_pred, valid_gt)
+                            sample_metrics[metric_name] = metric(
+                                valid_pred, valid_gt
                             )
                         computed_metrics.append(sample_metrics)
                     p.update(batch_progress, advance=batch_size)

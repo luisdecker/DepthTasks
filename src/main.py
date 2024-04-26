@@ -11,6 +11,7 @@ from pytorch_lightning.callbacks import RichModelSummary, RichProgressBar
 
 import pandas as pd
 
+from callbacks import UnfreezeEncoder
 from datasets import get_dataloader
 from datasets.nyu import NYUDepthV2
 from datasets.midair import MidAir
@@ -27,6 +28,13 @@ from models import get_loss
 from models.convNext import ConvNext
 from models.decoder import get_decoder
 from models.task import get_task
+
+torch.set_float32_matmul_precision("high")
+
+def freeze_encoder(model):
+    "Freezes model encoder"
+    for param in model.encoder.parameters():
+        param.requires_grad = False
 
 
 def read_tasks(args_tasks):
@@ -164,22 +172,33 @@ def train(args):
     model = ConvNext(
         tasks=tasks,
         features=args["features"],
-        pretrained_encoder=True,
+        pretrained_encoder=args.get("pretrained_encoder",False)
+        | args.get("start_frozen",False),
         encoder_name=args.get("encoder_name"),
     )
+
+    if args.get("start_frozen"):
+        print("===================================")
+        print("Warning: Encoder starting frozen!!!")
+        print("===================================")
+
+        freeze_encoder(model)
+
+    callbacks = [
+        RichModelSummary(max_depth=2),
+        RichProgressBar(refresh_rate=1, leave=True),
+    ]
+    if epoch := args.get("unfreeze_epoch", None):
+        callbacks.append(UnfreezeEncoder(epoch))
 
     trainer = pl.Trainer(
         # limit_train_batches=1,
         # limit_val_batches=100,
         max_epochs=args["epochs"],
         accelerator="gpu",
-        strategy="auto",
-        devices=[1,2,3,4],
+        devices=[0,1,2,3],
         default_root_dir=logpath,
-        callbacks=[
-            RichModelSummary(max_depth=2),
-            RichProgressBar(refresh_rate=1, leave=True),
-        ],
+        callbacks=callbacks,
     )
 
     trainer.fit(

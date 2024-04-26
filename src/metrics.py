@@ -21,7 +21,7 @@ def get_metric(metric):
 
 
 class AlphaError(Metric):
-    """Compútes the alpha error metric in a given power, considering 1.25 as
+    """Computes the alpha error metric in a given power, considering 1.25 as
     threshold"""
 
     def __init__(self, power):

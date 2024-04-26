@@ -24,6 +24,9 @@ class Model(LightningModule):
 
         self.savepath = args.get("savepath")
 
+        self.val_outputs = []
+        self.train_outputs = []
+
     def expand_shape(self, x):
         """Expands all tensors in the list x to have the same shape in the
         channels dimension.
@@ -49,6 +52,7 @@ class Model(LightningModule):
 
         loss = self.compute_loss(_y, y)
         self.log("train_step_loss", loss.detach(), sync_dist=True)
+        self.train_outputs.append(loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -57,6 +61,7 @@ class Model(LightningModule):
 
         metrics = self.compute_metric(_y, y)
         metrics = {("val_step_" + name): val for name, val in metrics.items()}
+        self.val_outputs.append(metrics)
         # self.log_dict(metrics, logger=True)
 
         return metrics
@@ -86,26 +91,27 @@ class Model(LightningModule):
                         metric.reset()
             self.log_dict(_metrics, sync_dist=True)
 
-    def training_epoch_end(self, outputs):
+    def on_training_epoch_end(self):
         """"""
+
         with torch.no_grad():
             _metrics = {}
-            if outputs and isinstance(outputs[0], dict):
-                outputs = [output["loss"] for output in outputs]
-
-            _metrics["train_loss"] = torch.stack(outputs).mean().detach()
+            _metrics["train_loss"] = (
+                torch.stack(self.train_outputs).mean().detach()
+            )
 
         self.log_dict(_metrics, logger=True, prog_bar=True, sync_dist=True)
+        self.train_outputs.clear()
 
-    def validation_epoch_end(self, outputs):
+    def on_validation_epoch_end(self):
         """"""
-
         _metrics = {}
 
         for task in self.tasks:
-            if outputs and isinstance(outputs[0], dict):
+            if self.val_outputs and isinstance(self.val_outputs[0], dict):
                 task_losses = [
-                    output[f"val_step_{task.name}_loss"] for output in outputs
+                    output[f"val_step_{task.name}_loss"]
+                    for output in self.val_outputs
                 ]
                 _metrics[f"val_{task.name}_loss"] = (
                     torch.stack(task_losses).mean().detach()
@@ -149,8 +155,7 @@ class Model(LightningModule):
 
             if task.train_on_disparity:
                 # Gt converted to disparity on loss
-                task_true = 1 / task_true
-
+                task_true = 1.0 / task_true
             has_nans = task_true.isnan().any()
             if task.mask_feature or has_nans:
                 feat_mask = torch.ones_like(task_true).bool()
@@ -207,8 +212,7 @@ class Model(LightningModule):
 
                 if task.train_on_disparity:
                     # Reconstruct the image for metric computing
-                    task_pred = torch.nn.functional.relu(task_pred) + 1e-6
-                    task_pred = 1 / task_pred
+                    task_true = 1.0 / task_true
 
                 has_nans = task_true.isnan().any()
                 if task.mask_feature or has_nans:
