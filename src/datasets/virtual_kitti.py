@@ -152,6 +152,9 @@ class VirtualKitti(Dataset):
 
         # Resizes if shape is provided
         if resize_shape:
-            img = img.resize(resize_shape, resample=Image.BICUBIC)
+            resample = (
+                Image.BICUBIC if feature.startswith("image") else Image.NEAREST
+            )
+            img = img.resize(resize_shape, resample=resample)
 
         return img

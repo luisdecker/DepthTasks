@@ -2,6 +2,7 @@
 
 from pytorch_lightning import LightningModule
 import torch
+import torchmetrics
 
 
 class Model(LightningModule):
@@ -24,8 +25,8 @@ class Model(LightningModule):
 
         self.savepath = args.get("savepath")
 
+        self.train_loss = torchmetrics.MeanMetric()
         self.val_outputs = []
-        self.train_outputs = []
 
     def expand_shape(self, x):
         """Expands all tensors in the list x to have the same shape in the
@@ -45,24 +46,35 @@ class Model(LightningModule):
         return x
 
     # Torchlightning steps ====================================================
-    def training_step(self, batch, batch_i):
+    def training_step(self, batch, batch_idx, dataset_idx=None):
         """One step of training"""
-        x, y = batch
-        _y = self.forward(x)
+        if dataset_idx is not None:
+            batch = [batch]
+        loss = 0
+        for loader_batch in batch:
+            x, y = loader_batch
+            _y = self.forward(x)
 
-        loss = self.compute_loss(_y, y)
-        self.log("train_step_loss", loss.detach(), sync_dist=True)
-        self.train_outputs.append(loss)
+            loss += self.compute_loss(_y, y)
+        loss = loss / len(batch)
+        self.log("train_step_loss", loss.detach(), sync_dist=False)
+        self.train_loss.update(loss)
         return loss
 
-    def validation_step(self, batch, batch_idx):
-        x, y = batch
-        _y = self.forward(x)
+    def validation_step(self, batch, batch_idx, dataset_idx=None):
+        if dataset_idx is not None:
+            batch = [batch]
+        for loader_batch in batch:
+            x, y = loader_batch
 
-        metrics = self.compute_metric(_y, y)
-        metrics = {("val_step_" + name): val for name, val in metrics.items()}
-        self.val_outputs.append(metrics)
-        # self.log_dict(metrics, logger=True)
+            _y = self.forward(x)
+
+            metrics = self.compute_metric(_y, y)
+            metrics = {
+                ("val_step_" + name): val for name, val in metrics.items()
+            }
+            self.val_outputs.append(metrics)
+            # self.log_dict(metrics, logger=True)
 
         return metrics
 
@@ -96,12 +108,10 @@ class Model(LightningModule):
 
         with torch.no_grad():
             _metrics = {}
-            _metrics["train_loss"] = (
-                torch.stack(self.train_outputs).mean().detach()
-            )
+            _metrics["train_loss"] = self.train_loss.compute()
+            self.train_loss.reset()
 
-        self.log_dict(_metrics, logger=True, prog_bar=True, sync_dist=True)
-        self.train_outputs.clear()
+        self.log_dict(_metrics, logger=True, prog_bar=True, sync_dist=False)
 
     def on_validation_epoch_end(self):
         """"""
@@ -123,7 +133,7 @@ class Model(LightningModule):
                         metric.compute().mean().detach()
                     )
                     metric.reset()
-        self.log_dict(_metrics, logger=True, prog_bar=True, sync_dist=True)
+        self.log_dict(_metrics, logger=True, prog_bar=True, sync_dist=False)
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=1e-3)

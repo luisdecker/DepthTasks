@@ -5,6 +5,7 @@ import multiprocessing
 import os
 from matplotlib.font_manager import json_dump
 
+from numpy import DataSource
 import pytorch_lightning as pl
 import torch
 from pytorch_lightning.callbacks import RichModelSummary, RichProgressBar
@@ -30,6 +31,7 @@ from models.decoder import get_decoder
 from models.task import get_task
 
 torch.set_float32_matmul_precision("high")
+
 
 def freeze_encoder(model):
     "Freezes model encoder"
@@ -84,53 +86,90 @@ def read_args():
 def prepare_dataset(dataset_root, dataset, target_size=None, **args):
     """Prepares datasets for train, validation and test"""
 
-    Dataset = get_dataloader(dataset)
+    dataset_roots = dataset_root  # Retrocomp
+    datasets = dataset
     batch_size = args["batch_size"]
     num_workers = args.get("num_workers", multiprocessing.cpu_count())
+    splits = args["split_json"]
 
-    train_loader = None
-    val_loader = None
-    test_loader = None
+    train_loaders = []
+    val_loaders = []
+    test_loaders = []
 
+    if isinstance(datasets, str):
+        datasets = [datasets]
+    if isinstance(dataset_roots, str):
+        dataset_roots = [dataset_roots]
+    if isinstance(splits, str):
+        splits = [splits]
+
+    # __________________________________________________________________________
     if args.get("train", False):
-        print("Preparing train dataset...")
-        train_dataset = Dataset(
-            dataset_root=dataset_root,
-            split="train",
-            target_size=target_size,
-            **args,
-        )
-        train_loader = train_dataset.build_dataloader(
-            batch_size=batch_size, shuffle=True, num_workers=num_workers
-        )
+        print("Preparing train datasets...")
+        for dataset, dataset_root, split_json in zip(
+            datasets, dataset_roots, splits
+        ):
+            Dataset = get_dataloader(dataset)
+            args["split_json"] = split_json
+            train_dataset = Dataset(
+                dataset_root=dataset_root,
+                split="train",
+                target_size=target_size,
+                **args,
+            )
+            train_loaders.append(
+                train_dataset.build_dataloader(
+                    batch_size=batch_size,
+                    shuffle=True,
+                    num_workers=num_workers,
+                )
+            )
     # __________________________________________________________________________
     if args.get("validation", False):
-        print("Preparing validation dataset...")
+        print("Preparing validation datasets...")
+        for dataset, dataset_root, split_json in zip(
+            datasets, dataset_roots, splits
+        ):
+            Dataset = get_dataloader(dataset)
+            args["split_json"] = split_json
 
-        val_dataset = Dataset(
-            dataset_root=dataset_root,
-            split="validation",
-            target_size=target_size,
-            **args,
-        )
-        val_loader = val_dataset.build_dataloader(
-            batch_size=batch_size, shuffle=False, num_workers=num_workers
-        )
+            val_dataset = Dataset(
+                dataset_root=dataset_root,
+                split="validation",
+                target_size=target_size,
+                **args,
+            )
+            val_loaders.append(
+                val_dataset.build_dataloader(
+                    batch_size=batch_size,
+                    shuffle=False,
+                    num_workers=num_workers,
+                )
+            )
     # __________________________________________________________________________
     if args.get("test", False):
         print("Preparing test dataset...")
+        for dataset, dataset_root, split_json in zip(
+            datasets, dataset_roots, splits
+        ):
+            Dataset = get_dataloader(dataset)
+            args["split_json"] = split_json
 
-        test_dataset = Dataset(
-            dataset_root=dataset_root,
-            split="test",
-            target_size=target_size,
-            **args,
-        )
-        test_loader = test_dataset.build_dataloader(
-            batch_size=batch_size, shuffle=False, num_workers=num_workers
-        )
+            test_dataset = Dataset(
+                dataset_root=dataset_root,
+                split="test",
+                target_size=target_size,
+                **args,
+            )
+            test_loaders.append(
+                test_dataset.build_dataloader(
+                    batch_size=batch_size,
+                    shuffle=False,
+                    num_workers=num_workers,
+                )
+            )
 
-    return train_loader, val_loader, test_loader
+    return train_loaders, val_loaders, test_loaders
 
 
 def get_last_exp(logpath):
@@ -172,8 +211,8 @@ def train(args):
     model = ConvNext(
         tasks=tasks,
         features=args["features"],
-        pretrained_encoder=args.get("pretrained_encoder",False)
-        | args.get("start_frozen",False),
+        pretrained_encoder=args.get("pretrained_encoder", False)
+        | args.get("start_frozen", False),
         encoder_name=args.get("encoder_name"),
     )
 
@@ -196,9 +235,10 @@ def train(args):
         # limit_val_batches=100,
         max_epochs=args["epochs"],
         accelerator="gpu",
-        devices=[0,1,2,3],
+        devices=[0, 2, 3, 4],
         default_root_dir=logpath,
         callbacks=callbacks,
+        # precision="bf16",
     )
 
     trainer.fit(
@@ -324,7 +364,7 @@ def test(args):
 
     print("--->nyu", global_metrics_nyu)
     print("--->midair", global_metrics_midair)
-    # print("--->midair", "!!!MIDAIR DESATIVADO!!!")
+    #   print("--->midair", "!!!MIDAIR DESATIVADO!!!")
     print("--->hypersim", global_metrics_hypersim)
     print("--->kitti", global_metrics_kitti)
     print("--->virtual kitti", global_metrics_virtualkitti)
