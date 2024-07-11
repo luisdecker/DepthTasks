@@ -1,0 +1,52 @@
+{
+    "expname": "abril/AUG_RELATIVE_NONORM_CROP_convnext-BASE_synthia-depth_loss-weight",
+    "crop_center": true,
+    "dataset": "synthia",
+    "augmentation": true,
+    "encoder_name": "base",
+    "num_workers": 4,
+    "target_size": [
+        256,
+        256
+    ],
+    "depth_clip": null,
+    "mask_sky": false,
+    "dataset_root": "/hadatasets/SYNTHIA-AL/",
+    "batch_size": 8,
+    "epochs": 100,
+    "split_json": "configs/synthia_splits.json",
+    "features": [
+        [
+            "image_l"
+        ],
+        [
+            "depth_l"
+        ]
+    ],
+    "tasks": [
+        {
+            "type": "dense_regression",
+            "name": "depth",
+            "train_on_disparity": false,
+            "loss": "midas",
+            "metrics": [
+                "rmse",
+                "logrmse",
+                "absrel",
+                "squaredrel",
+                "a1",
+                "a2",
+                "a3"
+            ],
+            "channels": 1,
+            "features": [
+                "depth_l"
+            ],
+            "mask_feature": null,
+            "decoder": {
+                "type": "unet",
+                "args": {}
+            }
+        }
+    ]
+}

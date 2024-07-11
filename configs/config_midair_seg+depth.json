@@ -1,0 +1,69 @@
+{
+    "crop_center": true,
+    "expname": "CROP_convnext-BASE_depth+seg_midair",
+    "dataset": "midair",
+    "augmentation": false,
+    "encoder_name": "base",
+    "num_workers": 8,
+    "target_size": [
+        256,
+        256
+    ],
+    "depth_clip": null,
+    "mask_sky": false,
+    "dataset_root": "/hadatasets/midair/MidAir",
+    "batch_size": 6,
+    "epochs": 100,
+    "split_json": "configs/midair_splits.json",
+    "features": [
+        [
+            "image_l"
+        ],
+        [
+            "depth_l",
+            "seg_l"
+        ]
+    ],
+    "tasks": [
+        {
+            "type": "dense_regression",
+            "name": "depth",
+            "train_on_disparity": false,
+            "loss": null,
+            "metrics": [
+                "rmse",
+                "logrmse",
+                "absrel",
+                "squaredrel",
+                "a1",
+                "a2",
+                "a3"
+            ],
+            "channels": 1,
+            "features": [
+                "depth_l"
+            ],
+            "mask_feature": null,
+            "decoder": {
+                "type": "unet",
+                "args": {}
+            }
+        },
+        {
+            "type": "dense_classification",
+            "name": "segmentation",
+            "train_on_disparity": false,
+            "loss": null,
+            "metrics": [],
+            "channels": 15,
+            "features": [
+                "seg_l"
+            ],
+            "mask_feature": null,
+            "decoder": {
+                "type": "unet",
+                "args": {}
+            }
+        }
+    ]
+}

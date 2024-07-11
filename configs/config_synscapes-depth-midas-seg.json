@@ -1,0 +1,69 @@
+{
+    "expname": "abril/SEG_AUG_RELATIVE_CROP_convnext-BASE_synscapes-depth",
+    "crop_center": true,
+    "dataset": "synscapes",
+    "augmentation": true,
+    "encoder_name": "base",
+    "num_workers": 16,
+    "target_size": [
+        256,
+        256
+    ],
+    "depth_clip": null,
+    "mask_sky": false,
+    "dataset_root": "/hadatasets/synscapes",
+    "batch_size": 10,
+    "epochs": 100,
+    "split_json": "configs/synscapes_split.json",
+    "features": [
+        [
+            "image_l"
+        ],
+        [
+            "depth_l",
+            "seg_l"
+        ]
+    ],
+    "tasks": [
+        {
+            "type": "dense_regression",
+            "name": "depth",
+            "train_on_disparity": false,
+            "loss": "midas",
+            "metrics": [
+                "rmse",
+                "logrmse",
+                "absrel",
+                "squaredrel",
+                "a1",
+                "a2",
+                "a3"
+            ],
+            "channels": 1,
+            "features": [
+                "depth_l"
+            ],
+            "mask_feature": null,
+            "decoder": {
+                "type": "unet",
+                "args": {}
+            }
+        },
+        {
+            "type": "dense_classification",
+            "name": "segmentation",
+            "train_on_disparity": false,
+            "loss": null,
+            "metrics": [],
+            "channels": 30,
+            "features": [
+                "seg_l"
+            ],
+            "mask_feature": null,
+            "decoder": {
+                "type": "unet",
+                "args": {}
+            }
+        }
+    ]
+}
