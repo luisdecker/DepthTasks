@@ -3,9 +3,12 @@ from random import shuffle
 import torch
 from rich.progress import Progress
 from metrics import get_metric
+import numpy as np
+
+from models.losses import GlobalMeanRemovedLoss
 
 
-def eval_dataset(network, dataset, batch_size=100):
+def eval_dataset(network, dataset, batch_size=1):
     """Evaluates a network in all elements of a dataset. Returns the global
     metrics and a list with the metrics by sample"""
 
@@ -71,4 +74,7 @@ def eval_dataset(network, dataset, batch_size=100):
         for name, metric in metrics.items()
     }
 
+    for metric, val in global_metrics.items():
+        if val == np.nan:
+            print (f"{metric} is nan!")
     return global_metrics, computed_metrics

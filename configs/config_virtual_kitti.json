@@ -1,5 +1,10 @@
 {
-    "expname": "NONORM_CROP_convnext-BASE_depth_virtualkitti",
+    "expname": "UNFREEZE11_NONORM_CROP_convnext-BASE_depth_virtualkitti",
+    
+    "start_frozen": true,
+    "unfreeze_epoch": 11,
+    
+    
     "crop_center": true,
     "dataset": "virtualkitti",
     "augmentation": false,

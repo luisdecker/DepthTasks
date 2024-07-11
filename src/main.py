@@ -30,7 +30,7 @@ from models.convNext import ConvNext
 from models.decoder import get_decoder
 from models.task import get_task
 
-torch.set_float32_matmul_precision("high")
+torch.set_float32_matmul_precision("medium")
 
 
 def freeze_encoder(model):
@@ -69,7 +69,7 @@ def read_args():
 
     parser.add_argument("--config", type=str)
     parser.add_argument("--evaluate_path", type=str, default=None)
-    parser.add_argument("--gpu", type=str, default=0)
+    parser.add_argument("--gpu", nargs="+", type=int, default=0)
     parser.add_argument("--ckpt_path", type=str, default=None)
 
     args = vars(parser.parse_args())
@@ -187,7 +187,9 @@ def get_last_exp(logpath):
 
 def train(args):
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    DEVICE = int(args["gpu"])
+
+    DEVICE = args["gpu"]
+    DEVICE = [DEVICE] if isinstance(DEVICE, int) else DEVICE
 
     # Generate log path
 
@@ -214,6 +216,7 @@ def train(args):
         pretrained_encoder=args.get("pretrained_encoder", False)
         | args.get("start_frozen", False),
         encoder_name=args.get("encoder_name"),
+        num_loaders=len(train_loader),
     )
 
     if args.get("start_frozen"):
@@ -235,7 +238,7 @@ def train(args):
         # limit_val_batches=100,
         max_epochs=args["epochs"],
         accelerator="gpu",
-        devices=[0, 2, 3, 4],
+        devices=DEVICE,
         default_root_dir=logpath,
         callbacks=callbacks,
         # precision="bf16",
@@ -254,7 +257,7 @@ def train(args):
 def test(args):
     """"""
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    DEVICE = int(args["gpu"])
+    DEVICE = int(args["gpu"][0])
 
     # Get model path
     model_path = args["evaluate_path"]
@@ -300,12 +303,17 @@ def test(args):
     )
     del virtual_kitti_val_ds
 
+    print("--->virtual kitti", global_metrics_virtualkitti)
+
+
     print("Loading NYU validation dataset")
     args["split_json"] = "/home/luiz.decker/code/DepthTasks/configs/nyu.json"
     args["dataset_root"] = "/hadatasets/nyu"
     nyu_val_ds = NYUDepthV2(split="validation", **args)
     global_metrics_nyu, sample_metrics_nyu = eval_dataset(model, nyu_val_ds)
     del nyu_val_ds
+    print("--->nyu", global_metrics_nyu)
+    
 
     print("Loading synscapes validation dataset")
     args["split_json"] = (

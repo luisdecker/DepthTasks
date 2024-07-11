@@ -27,6 +27,7 @@ class Model(LightningModule):
 
         self.train_loss = torchmetrics.MeanMetric()
         self.val_outputs = []
+        self.num_loaders = args.get("num_loaders", 1)
 
     def expand_shape(self, x):
         """Expands all tensors in the list x to have the same shape in the
@@ -46,35 +47,36 @@ class Model(LightningModule):
         return x
 
     # Torchlightning steps ====================================================
-    def training_step(self, batch, batch_idx, dataset_idx=None):
+    def training_step(self, batch, batch_idx):
         """One step of training"""
-        if dataset_idx is not None:
-            batch = [batch]
+        # if self.num_loaders == 1:
+        #     batch = [batch]
         loss = 0
+        xs = []
+        ys = []
         for loader_batch in batch:
             x, y = loader_batch
-            _y = self.forward(x)
+            xs.append(x)
+            ys.append(y)
+        x = torch.cat(xs)
+        y = torch.cat(ys)
+        _y = self.forward(x)
 
-            loss += self.compute_loss(_y, y)
-        loss = loss / len(batch)
+        loss = self.compute_loss(_y, y)
         self.log("train_step_loss", loss.detach(), sync_dist=False)
         self.train_loss.update(loss)
         return loss
 
     def validation_step(self, batch, batch_idx, dataset_idx=None):
-        if dataset_idx is not None:
-            batch = [batch]
-        for loader_batch in batch:
-            x, y = loader_batch
 
-            _y = self.forward(x)
+        x, y = batch
 
-            metrics = self.compute_metric(_y, y)
-            metrics = {
-                ("val_step_" + name): val for name, val in metrics.items()
-            }
-            self.val_outputs.append(metrics)
-            # self.log_dict(metrics, logger=True)
+        _y = self.forward(x)
+
+        metrics = self.compute_metric(_y, y)
+        metrics = {("val_step_" + name): val for name, val in metrics.items()}
+        self.val_outputs.append(metrics)
+        # self.log_dict(metrics, logger=True)
 
         return metrics
 
@@ -279,3 +281,6 @@ class Model(LightningModule):
         self = self.cuda(gpu)
         [decoder.cuda(gpu) for decoder in self.decoders]
         return self
+
+    def func(x, y, z):
+        "faz algo"

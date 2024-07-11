@@ -1,5 +1,8 @@
 {
     "expname": "NEW_convnext-BASE_depth_hypersim_pretrained_nonan_augmentation'",
+
+    "crop_center": true,
+
     "dataset": "hypersim",
     "augmentation": true,
     "encoder_name": "base",
