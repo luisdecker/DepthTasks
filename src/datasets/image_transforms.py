@@ -71,10 +71,10 @@ class Transform2Pil(object):
 
 class ImageAugmentation(object):
     @staticmethod
-    def adjust_pil(pil):
-        brightness = random.uniform(0.8, 1.0)
-        contrast = random.uniform(0.8, 1.0)
-        saturation = random.uniform(0.8, 1.0)
+    def image_only_transforms(pil):
+        brightness = random.uniform(0.5, 1.5)
+        contrast = random.uniform(0.5, 1.5)
+        saturation = random.uniform(0.5, 1.5)
 
         pil = functional.adjust_brightness(pil, brightness)
         pil = functional.adjust_contrast(pil, contrast)
@@ -82,10 +82,25 @@ class ImageAugmentation(object):
 
         return pil
 
+    @staticmethod
+    def rotation_transforms(image, depth):
+
+        degrees = random.choice([0, 90, 180, 270])
+
+        return image.rotate(degrees), depth.rotate(degrees)
+
     def __call__(self, data_item):
         for d in data_item:
             if d in ["image_l", "image_r"]:
-                data_item[d] = self.adjust_pil(data_item[d])
+                data_item[d] = self.image_only_transforms(data_item[d])
+                depth_name = f"depth_{d[-1]}"
+
+                if depth_name in data_item:
+                    rotated_image, rotated_depth = self.rotation_transforms(
+                        data_item[d], data_item[depth_name]
+                    )
+                    data_item[d] = rotated_image
+                    data_item[depth_name] = rotated_depth
 
         return data_item
 

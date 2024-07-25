@@ -21,6 +21,7 @@ from datasets.kitti import Kitti
 from datasets.virtual_kitti import VirtualKitti
 from datasets.synthia import Synthia
 from datasets.synscapes import Synscapes
+from datasets.mixed_dataset import MixedDataset
 from eval_utils import eval_dataset
 
 from metrics import get_metric
@@ -71,6 +72,7 @@ def read_args():
     parser.add_argument("--evaluate_path", type=str, default=None)
     parser.add_argument("--gpu", nargs="+", type=int, default=0)
     parser.add_argument("--ckpt_path", type=str, default=None)
+    parser.add_argument("--pretrained_path", type=str, default=None)
 
     args = vars(parser.parse_args())
     if not args["evaluate_path"]:
@@ -117,13 +119,7 @@ def prepare_dataset(dataset_root, dataset, target_size=None, **args):
                 target_size=target_size,
                 **args,
             )
-            train_loaders.append(
-                train_dataset.build_dataloader(
-                    batch_size=batch_size,
-                    shuffle=True,
-                    num_workers=num_workers,
-                )
-            )
+            train_loaders.append(train_dataset)
     # __________________________________________________________________________
     if args.get("validation", False):
         print("Preparing validation datasets...")
@@ -139,13 +135,7 @@ def prepare_dataset(dataset_root, dataset, target_size=None, **args):
                 target_size=target_size,
                 **args,
             )
-            val_loaders.append(
-                val_dataset.build_dataloader(
-                    batch_size=batch_size,
-                    shuffle=False,
-                    num_workers=num_workers,
-                )
-            )
+            val_loaders.append(val_dataset)
     # __________________________________________________________________________
     if args.get("test", False):
         print("Preparing test dataset...")
@@ -161,15 +151,25 @@ def prepare_dataset(dataset_root, dataset, target_size=None, **args):
                 target_size=target_size,
                 **args,
             )
-            test_loaders.append(
-                test_dataset.build_dataloader(
-                    batch_size=batch_size,
-                    shuffle=False,
-                    num_workers=num_workers,
-                )
-            )
+            test_loaders.append(test_dataset)
 
-    return train_loaders, val_loaders, test_loaders
+    return (
+        MixedDataset(datasets=train_loaders).build_dataloader(
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=num_workers,
+        ),
+        MixedDataset(datasets=val_loaders).build_dataloader(
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+        ),
+        MixedDataset(datasets=test_loaders).build_dataloader(
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+        ),
+    )
 
 
 def get_last_exp(logpath):
@@ -218,6 +218,11 @@ def train(args):
         encoder_name=args.get("encoder_name"),
         num_loaders=len(train_loader),
     )
+
+    if pretrained_path := args.get("pretrained_path"):
+        "Load model weigths only"
+        checkpoint = torch.load(pretrained_path)
+        model.load_state_dict(checkpoint["state_dict"])
 
     if args.get("start_frozen"):
         print("===================================")
@@ -305,7 +310,6 @@ def test(args):
 
     print("--->virtual kitti", global_metrics_virtualkitti)
 
-
     print("Loading NYU validation dataset")
     args["split_json"] = "/home/luiz.decker/code/DepthTasks/configs/nyu.json"
     args["dataset_root"] = "/hadatasets/nyu"
@@ -313,7 +317,6 @@ def test(args):
     global_metrics_nyu, sample_metrics_nyu = eval_dataset(model, nyu_val_ds)
     del nyu_val_ds
     print("--->nyu", global_metrics_nyu)
-    
 
     print("Loading synscapes validation dataset")
     args["split_json"] = (

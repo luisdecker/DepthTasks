@@ -1,13 +1,18 @@
 {
-    "expname": "maio/mixed-depth-midas-street-big",
+    "expname": "julho/mixed-depth-midas-street",
+    "pretrained_path": "/home/luiz.decker/code/DepthTasks/logs/julho/midair-midas/lightning_logs/version_3/checkpoints/epoch=99-step=706000.ckpt",
+    "lr": 1e-5,
+    "scheduler_steps": [
+        80
+    ],
     "crop_center": true,
     "dataset": [
         "synthia",
-        "synscapes"
-        
+        "synscapes",
+        "virtualkitti"
     ],
     "augmentation": true,
-    "encoder_name": "large",
+    "encoder_name": "base",
     "num_workers": 4,
     "target_size": [
         256,
@@ -17,13 +22,15 @@
     "mask_sky": false,
     "dataset_root": [
         "/hadatasets/SYNTHIA-AL/",
-        "/hadatasets/synscapes"
+        "/hadatasets/synscapes",
+        "/hadatasets/virtual_kitty"
     ],
     "batch_size": 4,
     "epochs": 150,
     "split_json": [
         "configs/synthia_splits.json",
-        "configs/synscapes_split.json"
+        "configs/synscapes_split.json",
+        "configs/virtual_kitty_splits.json"
     ],
     "features": [
         [

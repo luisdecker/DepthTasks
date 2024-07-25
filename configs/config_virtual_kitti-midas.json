@@ -1,8 +1,6 @@
 {
-    "expname": "AUG_RELATIVE_NONORM_CROP_convnext-BASE_depth_virtualkitti",
-    
-    "start_frozen": false,    
-    
+    "expname": "julho/virtualkitti_rotate",
+    "start_frozen": false,
     "crop_center": true,
     "dataset": "virtualkitti",
     "augmentation": true,

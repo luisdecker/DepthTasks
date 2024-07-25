@@ -29,6 +29,9 @@ class Model(LightningModule):
         self.val_outputs = []
         self.num_loaders = args.get("num_loaders", 1)
 
+        self.lr = args.get("lr", 1e-3)
+        self.scheduler_steps = args.get("scheduler_steps", [28, 80])
+
     def expand_shape(self, x):
         """Expands all tensors in the list x to have the same shape in the
         channels dimension.
@@ -52,14 +55,8 @@ class Model(LightningModule):
         # if self.num_loaders == 1:
         #     batch = [batch]
         loss = 0
-        xs = []
-        ys = []
-        for loader_batch in batch:
-            x, y = loader_batch
-            xs.append(x)
-            ys.append(y)
-        x = torch.cat(xs)
-        y = torch.cat(ys)
+
+        x, y = batch
         _y = self.forward(x)
 
         loss = self.compute_loss(_y, y)
@@ -138,11 +135,12 @@ class Model(LightningModule):
         self.log_dict(_metrics, logger=True, prog_bar=True, sync_dist=False)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-3)
+
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
 
         lr_scheduler_config = {
             "scheduler": torch.optim.lr_scheduler.MultiStepLR(
-                optimizer, milestones=[20, 80], gamma=0.1
+                optimizer, milestones=self.scheduler_steps, gamma=0.1
             ),
             "interval": "epoch",
             "frequency": 1,
@@ -281,6 +279,3 @@ class Model(LightningModule):
         self = self.cuda(gpu)
         [decoder.cuda(gpu) for decoder in self.decoders]
         return self
-
-    def func(x, y, z):
-        "faz algo"

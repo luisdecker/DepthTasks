@@ -134,6 +134,8 @@ class VirtualKitti(Dataset):
                 image_path, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH
             ).astype("float32")
             img = self._crop_center(img) if self.crop_center else img
+            # img[img >= 65535] = -1  # sky not valid
+            img[img > 0] /= 1000  # cm to m
             img = Image.fromarray(img.astype(np.float32))
 
         if feature.startswith("image"):
