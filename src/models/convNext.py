@@ -38,6 +38,10 @@ class ConvNext(Model):
             else encoder()
         ).features
 
+        self.transforms = None
+        if args.get("pretrained_encoder"):
+            self.transforms = weights.IMAGENET1K_V1.transforms()
+
         skip_dims = {
             "tiny": [[-1, 4], [96, 2], [192, 2], [384, 2]],
             "base": [[-1, 4], [128, 2], [256, 2], [512, 2]],
@@ -67,6 +71,10 @@ class ConvNext(Model):
         x = x[:, 0, ...]
 
         # x = (b, c, h, w)
+
+        # Apply pretrained transforms
+        if self.transforms:
+            x = self.transforms(x)
 
         partial_maps = []  # Channels are for base size
         x = self.encoder[0](x)  # -> x = (b, 128, h/4, w/4) ( ^*4 )

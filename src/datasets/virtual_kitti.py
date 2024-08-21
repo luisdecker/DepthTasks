@@ -104,6 +104,7 @@ class VirtualKitti(Dataset):
         """"""
         super().__init__(dataset_root, split, split_json, **args)
         self.num_classes = 15
+        self.normalize_sky = args.get("normalize_sky", False)
 
     def gen_file_list(self, dataset_path, split_file, split):
         """
@@ -135,7 +136,11 @@ class VirtualKitti(Dataset):
             ).astype("float32")
             img = self._crop_center(img) if self.crop_center else img
             # img[img >= 65535] = -1  # sky not valid
-            img[img > 0] /= 1000  # cm to m
+            img[img > 0] /= 100  # cm to m
+
+            if self.normalize_sky:
+                img[img == 655.3500] = np.max(img[img != 655.3500])
+
             img = Image.fromarray(img.astype(np.float32))
 
         if feature.startswith("image"):

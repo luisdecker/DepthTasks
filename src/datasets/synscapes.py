@@ -63,6 +63,7 @@ class Synscapes(Dataset):
     def __init__(self, dataset_root, split, split_json, **args):
         """"""
         super().__init__(dataset_root, split, split_json, **args)
+        self.normalize_sky = args.get("normalize_sky", False)
 
     def gen_file_list(self, dataset_path, split_file, split):
         """
@@ -87,6 +88,8 @@ class Synscapes(Dataset):
         if feature.startswith("depth"):
             img = np.load(image_path).astype("float32")
             img = self._crop_center(img)
+            if self.normalize_sky:
+                img[img == -1] = np.max(img)
             img = Image.fromarray(img.astype(np.float32))
 
         if feature.startswith("image"):

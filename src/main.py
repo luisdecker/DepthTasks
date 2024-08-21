@@ -239,8 +239,10 @@ def train(args):
         callbacks.append(UnfreezeEncoder(epoch))
 
     trainer = pl.Trainer(
-        # limit_train_batches=1,
-        # limit_val_batches=100,
+        # limit_train_batches=60,
+        # limit_val_batches=0,
+        check_val_every_n_epoch=5,
+        num_sanity_val_steps=0,
         max_epochs=args["epochs"],
         accelerator="gpu",
         devices=DEVICE,

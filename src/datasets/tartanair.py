@@ -3,13 +3,13 @@
 from glob import glob
 import json
 import os
+from pathlib import Path
 
 import numpy as np
 from PIL import Image
-
-import torch
-from torch.utils.data import DataLoader
 from datasets.dataset import Dataset
+import cv2
+
 
 from datasets.image_transforms import ImageTransformer
 
@@ -188,25 +188,51 @@ class TartanAir(Dataset):
         if image_path.endswith(".png"):
             # Loads image
             assert os.path.isfile(image_path), f"{image_path} is not a file!"
-            img = Image.open(image_path)
+            img = cv2.imread(image_path)
 
         else:
             img = TartanAir._load_npz(image_path)
+            if feature.startswith("depth") and self.normalize_sky:
+                seg_img = TartanAir._get_seg_from_depth(image_path)
+                scene = TartanAir._get_scene_from_path(image_path)
+                if SKY_INDEXES[scene]:
+                    seg_img = TartanAir._load_npz(seg_img)
+                    img[seg_img == SKY_INDEXES[scene]] = np.max(
+                        img[seg_img != SKY_INDEXES[scene]]
+                    )
 
         # Resizes if shape is provided
         img = self._crop_center(img)
+        img = Image.fromarray(img)
         if resize_shape:
-            img = img.resize(resize_shape, resample=Image.BICUBIC)
+            resample = (
+                Image.BICUBIC if feature.startswith("image") else Image.NEAREST
+            )
+            img = img.resize(resize_shape, resample=resample)
 
         return img
 
     @staticmethod
-    def _load_npz(filepath, resize_shape=None):
+    def _load_npz(filepath):
         assert os.path.isfile(filepath), f"{filepath} is not a file!"
         data = np.load(filepath)
-        data_img = Image.fromarray(data).convert("F")
 
-        if resize_shape:
-            data_img = data_img.resize(resize_shape, resample=Image.BICUBIC)
+        return data
 
-        return data_img
+    @staticmethod
+    def _get_seg_from_depth(depth_path):
+        """Gets a segmentation annotation from the path of a given depth
+        annotation"""
+
+        path_list = Path(depth_path).parts[1:]
+        # Gets frame number
+        frame_number = path_list[-1].split("_")[0]
+        scene_path_dir = os.path.join("/", *path_list[:-2])
+        seg_dir = os.path.join(scene_path_dir, "seg_left")
+        seg_file = os.path.join(seg_dir, f"{frame_number}_left_seg.npy")
+        return seg_file
+
+    @staticmethod
+    def _get_scene_from_path(image_path):
+        """Gets the scene from the path of a image"""
+        return Path(image_path).parts[-5]

@@ -91,6 +91,7 @@ class MidAir(Dataset):
         """"""
         super().__init__(dataset_root, split, split_json, **args)
         self.scenes = get_split_from_json(split, split_json)
+        self.normalize_sky = args.get("normalize_sky", False)
 
     def gen_file_list(self, dataset_path, split_json, split):
         """
@@ -135,6 +136,8 @@ class MidAir(Dataset):
             img = np.asarray(img, np.uint16)
             img.dtype = np.float16
             img = 255 / img
+            if self.normalize_sky:
+                img[img == 32640] = np.max(img[img != 32640])
 
             img = Image.fromarray(img.astype(np.float32))
         if feature.startswith("seg"):

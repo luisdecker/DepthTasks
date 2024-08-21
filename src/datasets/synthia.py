@@ -33,6 +33,7 @@ class Synthia(Dataset):
         """"""
         super().__init__(dataset_root, split, split_json, **args)
         self.num_classes = 15
+        self.normalize_sky = args.get("normalize_sky", False)
 
     def gen_file_list(self, dataset_path, split_file, split):
         """
@@ -55,13 +56,15 @@ class Synthia(Dataset):
         assert os.path.isfile(image_path), f"{image_path} is not a file!"
 
         if feature.startswith("depth"):
-            img = cv2.imread(image_path, -1)
+            img = cv2.imread(image_path, -1).astype(np.float32)
             R = img[:, :, 2]
             G = img[:, :, 1] * 256
             B = img[:, :, 0] * 256 * 265
             dividendo = 256 * 256 * 256 - 1
 
             depth = 5000 * ((R + G + B) / dividendo)
+            if self.normalize_sky:
+                depth[depth > 5175] = np.max(depth[depth < 5175])
             img = Image.fromarray(depth.astype(np.float32))
 
         if feature.startswith("image"):

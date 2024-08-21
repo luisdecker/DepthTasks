@@ -1,4 +1,4 @@
-"Loss functions"
+"xLoss functions"
 
 import torch
 from typing import Optional, Sequence
@@ -8,6 +8,12 @@ from torch import Tensor
 from torch import nn
 from torchgeometry.losses import SSIM
 from torch.nn import functional as F
+
+from models.normalization import (
+    max_over_dims,
+    min_over_dims,
+    normalize_batch_zero_one,
+)
 
 
 class CombinedLoss(nn.Module):
@@ -335,7 +341,9 @@ class GradientLoss(nn.Module):
 
 
 class MidasLoss(nn.Module):
-    def __init__(self, alpha=0.5, scales=4, reduction="batch-based"):
+    def __init__(
+        self, alpha=0.5, scales=4, reduction="batch-based", disparity=False
+    ):
         super().__init__()
 
         self.__data_loss = MSELoss(reduction=reduction)
@@ -345,13 +353,20 @@ class MidasLoss(nn.Module):
         self.__alpha = alpha
 
         self.__prediction_ssi = None
+        self.disparity = disparity
+        if self.disparity:
+            print("Midas loss created with disparity!")
 
     def forward(self, prediction, target):
         if len(prediction.shape) == 4:  # remove extra dim
             prediction = prediction.squeeze(dim=1)
             target = target.squeeze(dim=1)
 
-        mask = target > 1
+        mask = target > 0
+        if self.disparity:
+            target = 1 / target
+            target = normalize_batch_zero_one(target)
+
         scale, shift = compute_scale_and_shift(prediction, target, mask)
         self.__prediction_ssi = scale.view(-1, 1, 1) * prediction + shift.view(
             -1, 1, 1

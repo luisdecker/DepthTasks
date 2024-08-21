@@ -30,7 +30,7 @@ class Model(LightningModule):
         self.num_loaders = args.get("num_loaders", 1)
 
         self.lr = args.get("lr", 1e-3)
-        self.scheduler_steps = args.get("scheduler_steps", [28, 80])
+        self.scheduler_steps = args.get("scheduler_steps", [20, 80])
 
     def expand_shape(self, x):
         """Expands all tensors in the list x to have the same shape in the
@@ -60,7 +60,7 @@ class Model(LightningModule):
         _y = self.forward(x)
 
         loss = self.compute_loss(_y, y)
-        self.log("train_step_loss", loss.detach(), sync_dist=False)
+        self.log("train_step_loss", loss, sync_dist=True)
         self.train_loss.update(loss)
         return loss
 
@@ -97,7 +97,7 @@ class Model(LightningModule):
                 for metric_name, metric in self.metrics[task.name].items():
                     if hasattr(metric, "compute"):
                         _metrics[f"test_{task.name}_{metric_name}"] = (
-                            metric.compute().mean().detach()
+                            metric.compute().mean()
                         )
                         metric.reset()
             self.log_dict(_metrics, sync_dist=True)
@@ -122,14 +122,14 @@ class Model(LightningModule):
                     output[f"val_step_{task.name}_loss"]
                     for output in self.val_outputs
                 ]
-                _metrics[f"val_{task.name}_loss"] = (
-                    torch.stack(task_losses).mean().detach()
-                )
+                _metrics[f"val_{task.name}_loss"] = torch.stack(
+                    task_losses
+                ).mean()
 
             for metric_name, metric in self.metrics[task.name].items():
                 if hasattr(metric, "compute"):
                     _metrics[f"val_{task.name}_{metric_name}"] = (
-                        metric.compute().mean().detach()
+                        metric.compute().mean()
                     )
                     metric.reset()
         self.log_dict(_metrics, logger=True, prog_bar=True, sync_dist=False)
@@ -163,9 +163,9 @@ class Model(LightningModule):
             task_pred = task_pred[:, :, : task.channels, ...]
             task_true = true[:, label_idx, ...]
 
-            if task.train_on_disparity:
-                # Gt converted to disparity on loss
-                task_true = 1.0 / task_true
+            # if task.train_on_disparity:
+            #     # Gt converted to disparity on loss
+            #     task_true = 1.0 / task_true
             has_nans = task_true.isnan().any()
             if task.mask_feature or has_nans:
                 feat_mask = torch.ones_like(task_true).bool()
@@ -244,9 +244,7 @@ class Model(LightningModule):
                         for t, p, m in zip(task_true, task_pred, mask):
                             batch_metric += metric(p[m], t[m])
                         batch_metric /= task_true.shape[0]
-                        _metrics[f"{task.name}_{metric_name}"] = (
-                            batch_metric.detach()
-                        )
+                        _metrics[f"{task.name}_{metric_name}"] = batch_metric
                     metrics.update(_metrics)
 
                     continue
@@ -261,12 +259,12 @@ class Model(LightningModule):
                             .reshape(-1, task.num_classes)
                             .float(),
                             task_true.squeeze(dim=1).flatten().long(),
-                        ).detach()
+                        )
                         continue
 
                     _metrics[metric_name] = metric(
                         task_pred.squeeze(dim=1), task_true.squeeze(dim=1)
-                    ).detach()
+                    )
 
                 for metric in _metrics:
                     value = _metrics[metric]

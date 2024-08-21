@@ -1,5 +1,5 @@
 {
-    "expname": "abril/DISP-AUG_RELATIVE_NONORM_CROP_convnext-BASE_synscapes-depth_loss-weight",
+    "expname": "agosto/synscapes-disp",
     "crop_center": true,
     "dataset": "synscapes",
     "augmentation": true,
@@ -27,7 +27,7 @@
         {
             "type": "dense_regression",
             "name": "depth",
-            "train_on_disparity": false,
+            "train_on_disparity": true,
             "loss": "midas",
             "metrics": [
                 "rmse",
