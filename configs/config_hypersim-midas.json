@@ -1,0 +1,57 @@
+{
+    "expname": "setembro/hypersim-midas/base_convext_decoder",
+    "lr": 1e-3,
+    "scheduler_name": "cossine",
+    "start_frozen": true,
+    "unfreeze_epoch": 50,
+    "pretrained_encoder": true,
+    "crop_center": true,
+    "dataset": "hypersim",
+    "augmentation": true,
+    "encoder_name": "base",
+    "num_workers": 4,
+    "target_size": [
+        224,
+        224
+    ],
+    "depth_clip": null,
+    "mask_sky": false,
+    "dataset_root": "/hadatasets/hypersim",
+    "batch_size": 4,
+    "epochs": 300,
+    "split_json": "configs/hypersim_splits_nonan_noblack.json",
+    "features": [
+        [
+            "image_l"
+        ],
+        [
+            "depth_l"
+        ]
+    ],
+    "tasks": [
+        {
+            "type": "dense_regression",
+            "name": "depth",
+            "train_on_disparity": true,
+            "loss": "midas",
+            "loss_params": {
+                "disparity": true
+            },
+            "metrics": [
+                "absrel",
+                "a1",
+                "a2",
+                "a3"
+            ],
+            "channels": 1,
+            "features": [
+                "depth_l"
+            ],
+            "mask_feature": null,
+            "decoder": {
+                "type": "convnext",
+                "args": {}
+            }
+        }
+    ]
+}

@@ -1,0 +1,70 @@
+{
+    "expname": "setembro/mixed-midas-street-disp-pretrained-alpha2",
+    "normalize_sky": true,
+    "scheduler_name": "cossine",
+    "start_frozen": true,
+    "unfreeze_epoch": 100,
+    "pretrained_encoder": true,
+    "crop_center": true,
+    "dataset": [
+        "synthia",
+        "synscapes",
+        "virtualkitti"
+    ],
+    "augmentation": true,
+    "encoder_name": "base",
+    "num_workers": 4,
+    "target_size": [
+        224,
+        224
+    ],
+    "depth_clip": null,
+    "mask_sky": false,
+    "dataset_root": [
+        "/hadatasets/SYNTHIA-AL/",
+        "/hadatasets/synscapes",
+        "/hadatasets/virtual_kitty"
+    ],
+    "batch_size": 40,
+    "epochs": 300,
+    "split_json": [
+        "configs/synthia_splits.json",
+        "configs/synscapes_split.json",
+        "configs/virtual_kitty_splits.json"
+    ],
+    "features": [
+        [
+            "image_l"
+        ],
+        [
+            "depth_l"
+        ]
+    ],
+    "tasks": [
+        {
+            "type": "dense_regression",
+            "name": "depth",
+            "train_on_disparity": false,
+            "loss": "midas",
+            "loss_params": {
+                "disparity": true,
+                "alpha": 2
+            },
+            "metrics": [
+                "absrel",
+                "a1",
+                "a2",
+                "a3"
+            ],
+            "channels": 1,
+            "features": [
+                "depth_l"
+            ],
+            "mask_feature": null,
+            "decoder": {
+                "type": "convnext",
+                "args": {}
+            }
+        }
+    ]
+}
