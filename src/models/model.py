@@ -1,5 +1,6 @@
 "Definition a abstract model and implementation of common model functions"
 
+from tabnanny import verbose
 from pytorch_lightning import LightningModule
 import torch
 import torchmetrics
@@ -31,6 +32,11 @@ class Model(LightningModule):
 
         self.lr = args.get("lr", 1e-3)
         self.scheduler_steps = args.get("scheduler_steps", [20, 80])
+        self.scheduler_name = args.get("scheduler_name", "cossine_restart")
+        self.epochs = args.get("epochs")
+        self.pretrained_encoder = args.get(
+            "pretrained_encoder", False
+        ) | args.get("start_frozen", False)
 
     def expand_shape(self, x):
         """Expands all tensors in the list x to have the same shape in the
@@ -60,7 +66,7 @@ class Model(LightningModule):
         _y = self.forward(x)
 
         loss = self.compute_loss(_y, y)
-        self.log("train_step_loss", loss, sync_dist=True)
+        self.log("train_step_loss", loss, sync_dist=True, prog_bar=True)
         self.train_loss.update(loss)
         return loss
 
@@ -107,10 +113,10 @@ class Model(LightningModule):
 
         with torch.no_grad():
             _metrics = {}
-            _metrics["train_loss"] = self.train_loss.compute()
+            _metrics["train_loss_epoch"] = self.train_loss.compute()
             self.train_loss.reset()
 
-        self.log_dict(_metrics, logger=True, prog_bar=True, sync_dist=False)
+        self.log_dict(_metrics, logger=True, prog_bar=True, sync_dist=True)
 
     def on_validation_epoch_end(self):
         """"""
@@ -132,16 +138,22 @@ class Model(LightningModule):
                         metric.compute().mean()
                     )
                     metric.reset()
-        self.log_dict(_metrics, logger=True, prog_bar=True, sync_dist=False)
+        self.log_dict(_metrics, logger=True, prog_bar=True, sync_dist=True)
 
     def configure_optimizers(self):
 
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
 
-        lr_scheduler_config = {
-            "scheduler": torch.optim.lr_scheduler.MultiStepLR(
-                optimizer, milestones=self.scheduler_steps, gamma=0.1
+        scheduler = {
+            "cossine": torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, T_max=self.epochs, verbose=True
             ),
+            "cossine_restart": torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                optimizer, T_0=10, T_mult=2, verbose=True
+            ),
+        }[self.scheduler_name]
+        lr_scheduler_config = {
+            "scheduler": scheduler,
             "interval": "epoch",
             "frequency": 1,
         }

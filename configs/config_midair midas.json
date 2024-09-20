@@ -1,6 +1,6 @@
 {
     "crop_center": true,
-    "expname": "julho/midair-midas",
+    "expname": "agosto/midair-midas-disp",
     "dataset": "midair",
     "augmentation": true,
     "encoder_name": "base",
@@ -27,13 +27,13 @@
         {
             "type": "dense_regression",
             "name": "depth",
-            "train_on_disparity": false,
+            "train_on_disparity": true,
             "loss": "midas",
+            "loss_params": {
+                "disparity": true
+            },
             "metrics": [
-                "rmse",
-                "logrmse",
                 "absrel",
-                "squaredrel",
                 "a1",
                 "a2",
                 "a3"

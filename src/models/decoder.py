@@ -74,9 +74,7 @@ class UnetDecoder(Decoder):
             channels = channels if channels != -1 else 32
 
             # Check if we are in the first upscale (from encoder)
-            in_channels = (
-                input_channels if i == 0 else skip_dimensions[i - 1][0]
-            )
+            in_channels = input_channels if i == 0 else skip_dimensions[i - 1][0]
 
             # Create each decoding stage
             stage_layers = []
@@ -104,9 +102,7 @@ class UnetDecoder(Decoder):
                     ]
                 )
         # self.forward()
-        self.layers = nn.ModuleList(
-            [nn.Sequential(*stage) for stage in self.layers]
-        )
+        self.layers = nn.ModuleList([nn.Sequential(*stage) for stage in self.layers])
         self.apply(self._init_weights)
 
     def forward(self, x, encoder_partial_maps):
@@ -163,9 +159,7 @@ class ConvNextDecoder(Decoder):
             channels = channels if channels != -1 else 32
 
             # Check if we are in the first upscale (from encoder)
-            in_channels = (
-                input_channels if i == 0 else skip_dimensions[i - 1][0]
-            )
+            in_channels = input_channels if i == 0 else skip_dimensions[i - 1][0]
 
             # Create each decoding stage
             stage_layers = []
@@ -196,9 +190,7 @@ class ConvNextDecoder(Decoder):
                     ]
                 )
 
-        self.layers = nn.ModuleList(
-            [nn.Sequential(*stage) for stage in self.layers]
-        )
+        self.layers = nn.ModuleList([nn.Sequential(*stage) for stage in self.layers])
         self.apply(self._init_weights)
 
     def forward(self, x, encoder_partial_maps):

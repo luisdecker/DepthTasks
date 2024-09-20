@@ -8,7 +8,7 @@ from matplotlib.font_manager import json_dump
 from numpy import DataSource
 import pytorch_lightning as pl
 import torch
-from pytorch_lightning.callbacks import RichModelSummary, RichProgressBar
+from pytorch_lightning.callbacks import RichModelSummary, RichProgressBar, LearningRateMonitor
 
 import pandas as pd
 
@@ -202,7 +202,6 @@ def train(args):
     args_path = os.path.join(logpath, "args.json")
     save_json(args_path, args["input_args"])
 
-    tasks = args["tasks"]
 
     # Prepare dataloaders
     train_loader, val_loader, test_loader = prepare_dataset(
@@ -211,12 +210,8 @@ def train(args):
 
     # Try to train some network
     model = ConvNext(
-        tasks=tasks,
-        features=args["features"],
-        pretrained_encoder=args.get("pretrained_encoder", False)
-        | args.get("start_frozen", False),
-        encoder_name=args.get("encoder_name"),
-        num_loaders=len(train_loader),
+        num_loaders=1,
+        **args,
     )
 
     if pretrained_path := args.get("pretrained_path"):
@@ -234,6 +229,7 @@ def train(args):
     callbacks = [
         RichModelSummary(max_depth=2),
         RichProgressBar(refresh_rate=1, leave=True),
+        LearningRateMonitor(logging_interval='step')
     ]
     if epoch := args.get("unfreeze_epoch", None):
         callbacks.append(UnfreezeEncoder(epoch))
@@ -248,6 +244,8 @@ def train(args):
         devices=DEVICE,
         default_root_dir=logpath,
         callbacks=callbacks,
+        logger=True,
+        enable_checkpointing=True,
         # precision="bf16",
     )
 

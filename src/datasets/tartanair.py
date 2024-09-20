@@ -192,22 +192,29 @@ class TartanAir(Dataset):
 
         else:
             img = TartanAir._load_npz(image_path)
-            if feature.startswith("depth") and self.normalize_sky:
-                seg_img = TartanAir._get_seg_from_depth(image_path)
-                scene = TartanAir._get_scene_from_path(image_path)
-                if SKY_INDEXES[scene]:
-                    seg_img = TartanAir._load_npz(seg_img)
-                    img[seg_img == SKY_INDEXES[scene]] = np.max(
-                        img[seg_img != SKY_INDEXES[scene]]
-                    )
+            if feature.startswith("depth"):
+
+                if self.normalize_sky:
+                    seg_img = TartanAir._get_seg_from_depth(image_path)
+                    scene = TartanAir._get_scene_from_path(image_path)
+                    if SKY_INDEXES[scene]:
+                        seg_img = TartanAir._load_npz(seg_img)
+                        img[seg_img == SKY_INDEXES[scene]] = np.max(
+                            img[seg_img != SKY_INDEXES[scene]]
+                        )
+
+                # Remove depth from dark areas
+                rgb_sum = cv2.imread(
+                    TartanAir._get_rgb_from_depth(image_path),
+                ).sum(axis=2)
+
+                img[rgb_sum == 0] = -1
 
         # Resizes if shape is provided
         img = self._crop_center(img)
         img = Image.fromarray(img)
         if resize_shape:
-            resample = (
-                Image.BICUBIC if feature.startswith("image") else Image.NEAREST
-            )
+            resample = Image.BICUBIC if feature.startswith("image") else Image.NEAREST
             img = img.resize(resize_shape, resample=resample)
 
         return img
@@ -236,3 +243,13 @@ class TartanAir(Dataset):
     def _get_scene_from_path(image_path):
         """Gets the scene from the path of a image"""
         return Path(image_path).parts[-5]
+
+    @staticmethod
+    def _get_rgb_from_depth(depth_path):
+        """Gets a rgb image corresponding to a depth map path"""
+        path_list = Path(depth_path).parts[1:]
+        frame_number = path_list[-1].split("_")[0]
+        scene_path_dir = os.path.join("/", *path_list[:-2])
+        img_dir = os.path.join(scene_path_dir, "image_left")
+        img_file = os.path.join(img_dir, f"{frame_number}_left.png")
+        return img_file

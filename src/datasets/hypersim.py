@@ -24,7 +24,9 @@ def get_data_from_row(dataset_path, scene, camera, id):
 
     basepath = os.path.join(dataset_path, scene, "images")
     rgb = os.path.join(
-        basepath, f"scene_{camera}_final_hdf5", f"frame.{id:0>4}.color.hdf5"
+        basepath,
+        f"scene_{camera}_final_preview",
+        f"frame.{id:0>4}.tonemap.jpg",
     )
     depth = os.path.join(
         basepath,
@@ -103,11 +105,11 @@ class HyperSim(Dataset):
                     except:
                         print("Deu pau")
 
-            if feature.startswith("image"):
-                #clip image
+            if feature.startswith("image"):  # This clip should be a tonemap
+                # clip image
                 img = img.clip(max=1)
                 img = img * 255
-                img = img.astype('uint8')
+                img = img.astype("uint8")
             img = Image.fromarray(img)
 
             if resize_shape:

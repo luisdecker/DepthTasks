@@ -62,7 +62,8 @@ class ConvNext(Model):
             ]
         )
 
-        self.apply(self._init_weights)
+        #self.apply(self._init_weights)
+        
 
     def forward(self, x):
         "Forward step"

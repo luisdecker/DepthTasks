@@ -181,7 +181,7 @@ def focal_loss(
 ############################ M I D A S #########################################
 
 
-def ssi_trim_loss(pred, true):
+def ssi_trim_loss(pred, true, mask):
     """
     This function calculates the SSI trim loss between the predicted and true values.
     The SSI trim loss is calculated by taking the absolute difference between the true and predicted values,
@@ -202,7 +202,8 @@ def ssi_trim_loss(pred, true):
         The average SSI trim loss over the batch.
     """
     residual = true - pred
-    batch_size, _, height, width = residual.shape
+    residual[mask] = 0
+    batch_size, height, width = residual.shape
     num_pixels = height * width
     num_pixels_crop = int(0.8 * num_pixels)
     abs_residual = torch.abs(residual)
@@ -347,6 +348,7 @@ class MidasLoss(nn.Module):
         super().__init__()
 
         self.__data_loss = MSELoss(reduction=reduction)
+        # self.__data_loss = ssi_trim_loss
         self.__regularization_loss = GradientLoss(
             scales=scales, reduction=reduction
         )
