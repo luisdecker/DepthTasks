@@ -12,7 +12,6 @@ import torch.nn as nn
 import torch
 
 from .model import Model
-from .task import DenseRegression
 
 
 class ConvNext(Model):

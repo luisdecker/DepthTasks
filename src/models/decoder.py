@@ -122,8 +122,8 @@ class UnetDecoder(Decoder):
             x = x + encoder_partial_maps[i]
 
         # Last layer does not have a skip connection
-        x = self.layers[-2](x)
-        x = self.layers[-1](x)
+        x = self.layers[-2](x)  # last upscale
+        x = self.layers[-1](x)  # pointwise
         # Pointwise
         # x = x.mean(axis=1).unsqueeze(dim=1)
         # x = x.unsqueeze(dim=1)

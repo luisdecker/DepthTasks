@@ -114,9 +114,7 @@ class HyperSim(Dataset):
 
             if resize_shape:
                 resample = (
-                    Image.BICUBIC
-                    if feature.startswith("image")
-                    else Image.NEAREST
+                    Image.BICUBIC if feature.startswith("image") else Image.NEAREST
                 )
                 img = img.resize(resize_shape, resample=resample)
 
@@ -133,18 +131,14 @@ class HyperSim(Dataset):
         fltFocal = 886.81
 
         imgPlaneX = (
-            np.linspace(
-                (-0.5 * intWidth) + 0.5, (0.5 * intWidth) - 0.5, intWidth
-            )
+            np.linspace((-0.5 * intWidth) + 0.5, (0.5 * intWidth) - 0.5, intWidth)
             .reshape(1, intWidth)
             .repeat(intHeight, 0)
             .astype(np.float32)[:, :, None]
         )
 
         imgPlaneY = (
-            np.linspace(
-                (-0.5 * intHeight) + 0.5, (0.5 * intHeight) - 0.5, intHeight
-            )
+            np.linspace((-0.5 * intHeight) + 0.5, (0.5 * intHeight) - 0.5, intHeight)
             .reshape(intHeight, 1)
             .repeat(intWidth, 1)
             .astype(np.float32)[:, :, None]

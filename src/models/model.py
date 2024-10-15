@@ -34,9 +34,9 @@ class Model(LightningModule):
         self.scheduler_steps = args.get("scheduler_steps", [20, 80])
         self.scheduler_name = args.get("scheduler_name", "cossine_restart")
         self.epochs = args.get("epochs")
-        self.pretrained_encoder = args.get(
-            "pretrained_encoder", False
-        ) | args.get("start_frozen", False)
+        self.pretrained_encoder = args.get("pretrained_encoder", False) | args.get(
+            "start_frozen", False
+        )
 
     def expand_shape(self, x):
         """Expands all tensors in the list x to have the same shape in the
@@ -93,12 +93,9 @@ class Model(LightningModule):
             for task in self.tasks:
                 if outputs and isinstance(outputs[0], dict):
                     task_losses = [
-                        output[f"val_step_{task.name}_loss"]
-                        for output in outputs
+                        output[f"val_step_{task.name}_loss"] for output in outputs
                     ]
-                    _metrics[f"test_{task.name}_loss"] = torch.stack(
-                        task_losses
-                    ).mean()
+                    _metrics[f"test_{task.name}_loss"] = torch.stack(task_losses).mean()
 
                 for metric_name, metric in self.metrics[task.name].items():
                     if hasattr(metric, "compute"):
@@ -125,18 +122,13 @@ class Model(LightningModule):
         for task in self.tasks:
             if self.val_outputs and isinstance(self.val_outputs[0], dict):
                 task_losses = [
-                    output[f"val_step_{task.name}_loss"]
-                    for output in self.val_outputs
+                    output[f"val_step_{task.name}_loss"] for output in self.val_outputs
                 ]
-                _metrics[f"val_{task.name}_loss"] = torch.stack(
-                    task_losses
-                ).mean()
+                _metrics[f"val_{task.name}_loss"] = torch.stack(task_losses).mean()
 
             for metric_name, metric in self.metrics[task.name].items():
                 if hasattr(metric, "compute"):
-                    _metrics[f"val_{task.name}_{metric_name}"] = (
-                        metric.compute().mean()
-                    )
+                    _metrics[f"val_{task.name}_{metric_name}"] = metric.compute().mean()
                     metric.reset()
         self.log_dict(_metrics, logger=True, prog_bar=True, sync_dist=True)
 
@@ -166,9 +158,7 @@ class Model(LightningModule):
         # Tasks must be in order
         total_loss = 0
         for task_index, task in enumerate(self.tasks):
-            label_idx = [
-                self.features[1].index(feat) for feat in task.features
-            ]
+            label_idx = [self.features[1].index(feat) for feat in task.features]
             # Gets data from the specified task
             task_pred = pred[:, [task_index], ...]
             # Remove any expanded data
@@ -183,9 +173,7 @@ class Model(LightningModule):
                 feat_mask = torch.ones_like(task_true).bool()
                 nan_mask = ~task_true.isnan()
                 if task.mask_feature:
-                    feat_mask = true[
-                        :, self.features[1].index(task.mask_feature), ...
-                    ]
+                    feat_mask = true[:, self.features[1].index(task.mask_feature), ...]
                     feat_mask = torch.unsqueeze(feat_mask, 1)
                     feat_mask = feat_mask / 255
                     feat_mask = feat_mask.bool()
@@ -225,9 +213,7 @@ class Model(LightningModule):
             # Tasks must be in order
             metrics = {}
             for task_index, task in enumerate(self.tasks):
-                label_idx = [
-                    self.features[1].index(feat) for feat in task.features
-                ]
+                label_idx = [self.features[1].index(feat) for feat in task.features]
                 task_pred = pred[:, [task_index], ...]
                 task_pred = task_pred[:, :, : task.channels, ...]
                 task_true = true[:, label_idx, ...]

@@ -8,7 +8,11 @@ from matplotlib.font_manager import json_dump
 from numpy import DataSource
 import pytorch_lightning as pl
 import torch
-from pytorch_lightning.callbacks import RichModelSummary, RichProgressBar, LearningRateMonitor
+from pytorch_lightning.callbacks import (
+    RichModelSummary,
+    RichProgressBar,
+    LearningRateMonitor,
+)
 
 import pandas as pd
 
@@ -108,9 +112,7 @@ def prepare_dataset(dataset_root, dataset, target_size=None, **args):
     # __________________________________________________________________________
     if args.get("train", False):
         print("Preparing train datasets...")
-        for dataset, dataset_root, split_json in zip(
-            datasets, dataset_roots, splits
-        ):
+        for dataset, dataset_root, split_json in zip(datasets, dataset_roots, splits):
             Dataset = get_dataloader(dataset)
             args["split_json"] = split_json
             train_dataset = Dataset(
@@ -123,9 +125,7 @@ def prepare_dataset(dataset_root, dataset, target_size=None, **args):
     # __________________________________________________________________________
     if args.get("validation", False):
         print("Preparing validation datasets...")
-        for dataset, dataset_root, split_json in zip(
-            datasets, dataset_roots, splits
-        ):
+        for dataset, dataset_root, split_json in zip(datasets, dataset_roots, splits):
             Dataset = get_dataloader(dataset)
             args["split_json"] = split_json
 
@@ -139,9 +139,7 @@ def prepare_dataset(dataset_root, dataset, target_size=None, **args):
     # __________________________________________________________________________
     if args.get("test", False):
         print("Preparing test dataset...")
-        for dataset, dataset_root, split_json in zip(
-            datasets, dataset_roots, splits
-        ):
+        for dataset, dataset_root, split_json in zip(datasets, dataset_roots, splits):
             Dataset = get_dataloader(dataset)
             args["split_json"] = split_json
 
@@ -202,7 +200,6 @@ def train(args):
     args_path = os.path.join(logpath, "args.json")
     save_json(args_path, args["input_args"])
 
-
     # Prepare dataloaders
     train_loader, val_loader, test_loader = prepare_dataset(
         train=True, validation=True, **args
@@ -220,16 +217,26 @@ def train(args):
         model.load_state_dict(checkpoint["state_dict"])
 
     if args.get("start_frozen"):
-        print("===================================")
-        print("Warning: Encoder starting frozen!!!")
-        print("===================================")
 
-        freeze_encoder(model)
+        freeze = bool(args.get("start_frozen"))
+
+        # Check if have to freeze in case of continuing a training
+        if ckpt_path := args["ckpt_path"]:
+            ckpt = torch.load(ckpt_path)
+            last_epoch = ckpt["epoch"]
+            freeze = last_epoch < args["unfreeze_epoch"]
+            del ckpt
+
+        if freeze:
+            print("===================================")
+            print("Warning: Encoder starting frozen!!!")
+            print("===================================")
+            freeze_encoder(model)
 
     callbacks = [
         RichModelSummary(max_depth=2),
         RichProgressBar(refresh_rate=1, leave=True),
-        LearningRateMonitor(logging_interval='step')
+        LearningRateMonitor(logging_interval="step"),
     ]
     if epoch := args.get("unfreeze_epoch", None):
         callbacks.append(UnfreezeEncoder(epoch))
@@ -276,9 +283,7 @@ def test(args):
     args["tasks"] = read_tasks(args["tasks"])
     # Get model weights
     print("Loading model weights")
-    model_weights = torch.load(
-        model_path, map_location=torch.device(f"cuda:{DEVICE}")
-    )
+    model_weights = torch.load(model_path, map_location=torch.device(f"cuda:{DEVICE}"))
 
     # Build a model and load weights
     # TODO: Get model from args
@@ -341,36 +346,24 @@ def test(args):
     del hypersim_val_ds
 
     print("Loading KITTI validation dataset")
-    args["split_json"] = (
-        "/home/luiz.decker/code/DepthTasks/configs/kitti_eigen_val.txt"
-    )
+    args["split_json"] = "/home/luiz.decker/code/DepthTasks/configs/kitti_eigen_val.txt"
     args["dataset_root"] = "/hadatasets/kitti"
     kitti_val_ds = Kitti(split="validation", **args)
-    global_metrics_kitti, sample_metrics_kitti = eval_dataset(
-        model, kitti_val_ds
-    )
+    global_metrics_kitti, sample_metrics_kitti = eval_dataset(model, kitti_val_ds)
     del kitti_val_ds
 
     print("Loading synthia validation dataset")
-    args["split_json"] = (
-        "/home/luiz.decker/code/DepthTasks/configs/synthia_splits.json"
-    )
+    args["split_json"] = "/home/luiz.decker/code/DepthTasks/configs/synthia_splits.json"
     args["dataset_root"] = "/hadatasets/SYNTHIA-AL/"
     synthia_val_ds = Synthia(split="validation", **args)
-    global_metrics_synthia, sample_metrics_synthia = eval_dataset(
-        model, synthia_val_ds
-    )
+    global_metrics_synthia, sample_metrics_synthia = eval_dataset(model, synthia_val_ds)
     del synthia_val_ds
 
     print("Loading MidAir validation dataset")
-    args["split_json"] = (
-        "/home/luiz.decker/code/DepthTasks/configs/midair_splits.json"
-    )
+    args["split_json"] = "/home/luiz.decker/code/DepthTasks/configs/midair_splits.json"
     args["dataset_root"] = "/hadatasets/midair/MidAir"
     midair_val_ds = MidAir(split="validation", **args)
-    global_metrics_midair, sample_metrics_midair = eval_dataset(
-        model, midair_val_ds
-    )
+    global_metrics_midair, sample_metrics_midair = eval_dataset(model, midair_val_ds)
     del midair_val_ds
 
     print("--->nyu", global_metrics_nyu)

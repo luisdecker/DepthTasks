@@ -1,14 +1,19 @@
 {
-    "expname": "DEBUG/tartanair-midas/base_convext_decoder",
-    "lr": 1e-3,
+    "evaluate_path": null,
+    "pretrained_path": null,
+    "expname": "outubro/generalist/generalist-unfreeze100-cossine",
+    "normalize_sky": true,
     "scheduler_name": "cossine",
     "start_frozen": true,
-    "unfreeze_epoch": 50,
+    "unfreeze_epoch": 100,
     "pretrained_encoder": true,
     "crop_center": true,
-    "dataset": "tartanair",
+    "dataset": [
+        "midair",
+        "tartanair",
+        "hypersim"
+    ],
     "augmentation": true,
-    "normalize_sky": true,
     "encoder_name": "base",
     "num_workers": 4,
     "target_size": [
@@ -17,10 +22,18 @@
     ],
     "depth_clip": null,
     "mask_sky": false,
-    "dataset_root": "/hadatasets/tartan-air/tartan-air/train",
-    "batch_size": 6,
+    "dataset_root": [
+        "/hadatasets/midair/MidAir",
+        "/hadatasets/tartan-air/tartan-air/train",
+        "/hadatasets/hypersim"
+    ],
+    "batch_size": 40,
     "epochs": 300,
-    "split_json": "configs/tartanair_scenes_splits.json",
+    "split_json": [
+        "configs/midair_splits.json",
+        "configs/tartanair_scenes_splits.json",
+        "configs/hypersim_splits_nonan_noblack.json"
+    ],
     "features": [
         [
             "image_l"
@@ -33,10 +46,11 @@
         {
             "type": "dense_regression",
             "name": "depth",
-            "train_on_disparity": true,
+            "train_on_disparity": false,
             "loss": "midas",
             "loss_params": {
-                "disparity": true
+                "disparity": true,
+                "alpha": 1
             },
             "metrics": [
                 "absrel",
@@ -50,7 +64,7 @@
             ],
             "mask_feature": null,
             "decoder": {
-                "type": "convnext",
+                "type": "unet",
                 "args": {}
             }
         }

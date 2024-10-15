@@ -32,6 +32,8 @@ class UpsampleConv(nn.Module):
         x = self.activation(x)
 
         return x
+
+
 class UpscaleConvNext(nn.Module):
     r"""A bilinear upscale followed by a ConvNext block"""
 
@@ -45,8 +47,9 @@ class UpscaleConvNext(nn.Module):
 
         x = self.upsample(x)
         x = self.block(x)
-        
+
         return x
+
 
 class ConvNextBlock(nn.Module):
     r"""ConvNeXt Block. There are two equivalent implementations:
@@ -72,13 +75,10 @@ class ConvNextBlock(nn.Module):
         self.act = nn.GELU()
         self.pwconv2 = nn.Linear(4 * dim, dim)
         self.gamma = (
-            nn.Parameter(
-                layer_scale_init_value * torch.ones((dim)), requires_grad=True
-            )
+            nn.Parameter(layer_scale_init_value * torch.ones((dim)), requires_grad=True)
             if layer_scale_init_value > 0
             else None
         )
-        
 
     def forward(self, x):
         input = x
@@ -103,9 +103,7 @@ class LayerNorm(nn.Module):
     with shape (batch_size, channels, height, width).
     """
 
-    def __init__(
-        self, normalized_shape, eps=1e-6, data_format="channels_last"
-    ):
+    def __init__(self, normalized_shape, eps=1e-6, data_format="channels_last"):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(normalized_shape))
         self.bias = nn.Parameter(torch.zeros(normalized_shape))
