@@ -1,4 +1,4 @@
-from models.losses import FocalLoss, CombinedLoss, MidasLoss
+from models.losses import FocalLoss, CombinedLoss, MidasLoss, MidasLossMedian
 from .simple_encoder import SimpleEncoder
 from .convNext import ConvNext
 
@@ -23,6 +23,7 @@ def get_loss(loss_name, **kwargs):
         "combined": CombinedLoss,
         "focal": FocalLoss,
         "midas": MidasLoss,
+        "midas-median": MidasLossMedian,
         "mse": nn.MSELoss,
     }
     loss = losses[loss_name.lower()]

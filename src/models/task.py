@@ -30,6 +30,8 @@ class Task:
 
         self.train_on_disparity = args.get("train_on_disparity", False)
 
+        self.decoder_args = args.get("decoder_args", {})
+
     def compute_metric(self, pred, true):
         results = {}
         for metric in self.metric:
@@ -67,9 +69,7 @@ class DenseClassification(Task):
 
         # Default loss if none specified
         # self.loss = args.get("loss") or FocalLoss()
-        self.loss = args.get("loss") or torch.nn.CrossEntropyLoss(
-            ignore_index=-1
-        )
+        self.loss = args.get("loss") or torch.nn.CrossEntropyLoss(ignore_index=-1)
         # Metrics
         self.metric = args.get("metrics") or {}
 

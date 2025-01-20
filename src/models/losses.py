@@ -76,9 +76,7 @@ class FocalLoss(nn.Module):
                 Defaults to -100.
         """
         if reduction not in ("mean", "sum", "none"):
-            raise ValueError(
-                'Reduction must be one of: "mean", "sum", "none".'
-            )
+            raise ValueError('Reduction must be one of: "mean", "sum", "none".')
 
         super().__init__()
         self.alpha = alpha
@@ -239,12 +237,8 @@ def compute_scale_and_shift(prediction, target, mask):
     det = a_00 * a_11 - a_01 * a_01
     valid = det > 0
 
-    x_0[valid] = (a_11[valid] * b_0[valid] - a_01[valid] * b_1[valid]) / det[
-        valid
-    ]
-    x_1[valid] = (-a_01[valid] * b_0[valid] + a_00[valid] * b_1[valid]) / det[
-        valid
-    ]
+    x_0[valid] = (a_11[valid] * b_0[valid] - a_01[valid] * b_1[valid]) / det[valid]
+    x_1[valid] = (-a_01[valid] * b_0[valid] + a_00[valid] * b_1[valid]) / det[valid]
 
     return x_0, x_1
 
@@ -342,16 +336,12 @@ class GradientLoss(nn.Module):
 
 
 class MidasLoss(nn.Module):
-    def __init__(
-        self, alpha=0.5, scales=4, reduction="batch-based", disparity=False
-    ):
+    def __init__(self, alpha=0.5, scales=4, reduction="batch-based", disparity=False):
         super().__init__()
 
         self.__data_loss = MSELoss(reduction=reduction)
         # self.__data_loss = ssi_trim_loss
-        self.__regularization_loss = GradientLoss(
-            scales=scales, reduction=reduction
-        )
+        self.__regularization_loss = GradientLoss(scales=scales, reduction=reduction)
         self.__alpha = alpha
 
         self.__prediction_ssi = None
@@ -370,9 +360,7 @@ class MidasLoss(nn.Module):
             target = normalize_batch_zero_one(target)
 
         scale, shift = compute_scale_and_shift(prediction, target, mask)
-        self.__prediction_ssi = scale.view(-1, 1, 1) * prediction + shift.view(
-            -1, 1, 1
-        )
+        self.__prediction_ssi = scale.view(-1, 1, 1) * prediction + shift.view(-1, 1, 1)
 
         total = self.__data_loss(self.__prediction_ssi, target, mask)
         if self.__alpha > 0:
@@ -386,3 +374,74 @@ class MidasLoss(nn.Module):
         return self.__prediction_ssi
 
     prediction_ssi = property(__get_prediction_ssi)
+
+
+class MidasLossMedian(nn.Module):
+    def __init__(self, alpha=0.5, scales=4, reduction="batch-based", disparity=False):
+        super().__init__()
+
+        self.__data_loss = self.trimmed_mae_loss
+        # self.__data_loss = ssi_trim_loss
+        self.__regularization_loss = GradientLoss(scales=scales, reduction=reduction)
+        self.__alpha = alpha
+
+        self.__prediction_ssi = None
+        self.disparity = disparity
+        if self.disparity:
+            print("Midas loss created with disparity!")
+
+    def forward(self, prediction, target):
+        if len(prediction.shape) == 4:  # remove extra dim
+            prediction = prediction.squeeze(dim=1)
+            target = target.squeeze(dim=1)
+
+        mask = target > 0
+        if self.disparity:
+            target = 1 / target
+            target = normalize_batch_zero_one(target)
+
+        self.__prediction_ssi = MidasLossMedian.normalize_prediction_robust(
+            prediction, mask
+        )
+        target_ = MidasLossMedian.normalize_prediction_robust(target, mask)
+
+        total = self.__data_loss(self.__prediction_ssi, target_, mask)
+        if self.__alpha > 0:
+            total += self.__alpha * self.__regularization_loss(
+                self.__prediction_ssi, target_, mask
+            )
+
+        return total
+
+    def trimmed_mae_loss(self, prediction, target, mask, trim=0.2):
+        M = torch.sum(mask, (1, 2))
+        res = prediction - target
+
+        res = res[mask.bool()].abs()
+
+        trimmed, _ = torch.sort(res.view(-1), descending=False)[
+            : int(len(res) * (1.0 - trim))
+        ]
+
+        return trimmed.sum() / (2 * M.sum())
+
+    def __get_prediction_ssi(self):
+        return self.__prediction_ssi
+
+    @staticmethod
+    def normalize_prediction_robust(target, mask):
+        ssum = torch.sum(mask, (1, 2))
+        valid = ssum > 0
+
+        m = torch.zeros_like(ssum).float()
+        s = torch.ones_like(ssum).float()
+
+        m[valid] = torch.median(
+            (mask[valid] * target[valid]).view(valid.sum(), -1), dim=1
+        ).values
+        target = target - m.view(-1, 1, 1)
+
+        sq = torch.sum(mask * target.abs(), (1, 2))
+        s[valid] = torch.clamp((sq[valid] / ssum[valid]), min=1e-6)
+
+        return target / (s.view(-1, 1, 1))

@@ -1,9 +1,10 @@
 """Depth estimation metrics"""
 
-from typing import Any
 import torch
 from torchmetrics import Metric, MeanSquaredError, MeanSquaredLogError
 from functools import partial
+
+from models.losses import MidasLossMedian, compute_scale_and_shift
 
 
 def get_metric(metric):
@@ -75,7 +76,7 @@ class LogRMSE(Metric):
         self.sum += torch.sqrt(((torch.log(gt) - torch.log(pred)) ** 2)).sum()
         self.n += gt.numel()
 
-    def compute(self):  
+    def compute(self):
         "Computes the final metric"
         return self.sum / self.n
 
@@ -114,3 +115,76 @@ class AbsoluteRelativeSquared(Metric):
     def compute(self):
         "Computes the final metric"
         return self.sum / self.n
+
+
+class FunctionalMetrics:
+    "Functional sample-by-sample version of the evaluation metrics"
+
+    # Alpha (delta) metrics
+    @staticmethod
+    def alphaN(pred, gt, N):
+        pred = pred[gt > 0]
+        gt = gt[gt > 0]
+        thresh = torch.max((gt / pred), (pred / gt))
+        sum = (thresh < (1.25**N)).float().sum()
+        num_elements = pred.numel()
+        return sum / num_elements
+
+    @staticmethod
+    def alpha1(pred, gt):
+        return FunctionalMetrics.alphaN(pred, gt, 1)
+
+    @staticmethod
+    def alpha2(pred, gt):
+        return FunctionalMetrics.alphaN(pred, gt, 2)
+
+    @staticmethod
+    def alpha3(pred, gt):
+        return FunctionalMetrics.alphaN(pred, gt, 3)
+
+    # absrel
+    @staticmethod
+    def absrel(pred, gt):
+        pred = pred[gt > 0]
+        gt = gt[gt > 0]
+        sum = torch.sum(torch.abs((gt - pred) / (gt)))
+        num_elements = gt.numel()
+        return sum / num_elements
+
+    ### SSI metrics ###
+
+    @staticmethod
+    def ssi_alphaN(pred, gt, N):
+        if len(pred.shape) == 4:  # remove extra dim
+            pred = pred.squeeze(dim=1)
+            gt = gt.squeeze(dim=1)
+        mask = gt > 0
+
+        pred_aligned = MidasLossMedian.normalize_prediction_robust(pred, mask)
+        gt_aligned = MidasLossMedian.normalize_prediction_robust(gt, mask)
+        # pred_depth = 1.0 / pred_aligned
+        return FunctionalMetrics.alphaN(pred_aligned, gt_aligned, N)
+
+    @staticmethod
+    def ssi_alpha1(pred, gt):
+        return FunctionalMetrics.ssi_alphaN(pred, gt, 1)
+
+    @staticmethod
+    def ssi_alpha2(pred, gt):
+        return FunctionalMetrics.ssi_alphaN(pred, gt, 2)
+
+    @staticmethod
+    def ssi_alpha3(pred, gt):
+        return FunctionalMetrics.ssi_alphaN(pred, gt, 3)
+
+    @staticmethod
+    def ssi_absrel(pred, gt):
+        if len(pred.shape) == 4:  # remove extra dim
+            pred = pred.squeeze(dim=1)
+            gt = gt.squeeze(dim=1)
+        mask = gt > 0
+
+        pred_aligned = MidasLossMedian.normalize_prediction_robust(pred, mask)
+        gt_aligned = MidasLossMedian.normalize_prediction_robust(gt, mask)
+        # pred_depth = 1.0 / pred_aligned
+        return FunctionalMetrics.absrel(pred_aligned, gt_aligned)

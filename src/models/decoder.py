@@ -17,12 +17,15 @@ def get_decoder(decoder: str):
 
 
 class Decoder(nn.Module):
-    def __init__(self, input_channels, output_channels, skip_dimensions=None):
+    def __init__(self, input_channels, output_channels, skip_dimensions=None, **args):
         super().__init__()
 
         self.input_channels = input_channels
         self.output_channels = output_channels
         self.skip_dimensions = skip_dimensions
+
+        self.use_relu = args.get("use_relu", False)
+        self.batchnorm = args.get("batchnorm", False)
 
 
 class SimpleDecoder(Decoder):
@@ -61,7 +64,7 @@ class UnetDecoder(Decoder):
             skip_dimensions, list
         ), "skip_dimensions must be a list with [(map_channels, map_factor)]"
 
-        self.activation = nn.GELU  # TODO: Parametrize this!
+        self.activation = nn.ReLU  # TODO: Parametrize this!
 
         self.layers = []
         # Reverse since we are decoding
@@ -86,6 +89,7 @@ class UnetDecoder(Decoder):
                         in_channels,
                         # Keep channels until dimensions are correct
                         channels if j == num_upscales - 1 else in_channels,
+                        batchnorm=self.batchnorm,
                     )
                 )
             self.layers.append(stage_layers)
@@ -124,6 +128,8 @@ class UnetDecoder(Decoder):
         # Last layer does not have a skip connection
         x = self.layers[-2](x)  # last upscale
         x = self.layers[-1](x)  # pointwise
+        if self.use_relu:
+            x = self.activation(x)
         # Pointwise
         # x = x.mean(axis=1).unsqueeze(dim=1)
         # x = x.unsqueeze(dim=1)

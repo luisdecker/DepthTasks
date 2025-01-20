@@ -65,6 +65,8 @@ class NYUDepthV2:
             images_resized.append(
                 np.array(
                     image.resize(self.target_size, resample=Image.BICUBIC)
+                    if self.target_size
+                    else image
                 )
             )
         images = np.array(images_resized)
@@ -77,6 +79,8 @@ class NYUDepthV2:
             depth = Image.fromarray(depth).convert("F")
             depths_resized.append(
                 np.array(depth.resize(self.target_size, Image.BICUBIC))
+                if self.target_size
+                else np.array(depth)
             )
         depths = np.array(depths_resized)
 

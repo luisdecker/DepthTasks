@@ -56,13 +56,13 @@ class ConvNext(Model):
                     input_channels=input_channels[encoder_name],
                     output_channels=task.channels,
                     skip_dimensions=self.skip_dimensions,
+                    **task.decoder_args
                 )
                 for task in self.tasks
             ]
         )
 
-        #self.apply(self._init_weights)
-        
+        # self.apply(self._init_weights)
 
     def forward(self, x):
         "Forward step"

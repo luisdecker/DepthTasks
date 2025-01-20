@@ -13,6 +13,10 @@ class UpsampleConv(nn.Module):
         stride = args.get("stride", 1)
         padding = args.get("padding", 1)
 
+        self.batchnorm = args.get("batchnorm", False)
+        if self.batchnorm:
+            self.normalization = nn.BatchNorm2d(out_channels)
+
         self.activation = args.get("activation", nn.Mish)()
 
         self.upsample = nn.UpsamplingBilinear2d(scale_factor=2)
@@ -29,6 +33,8 @@ class UpsampleConv(nn.Module):
 
         x = self.upsample(x)
         x = self.conv(x)
+        if self.batchnorm:
+            x = self.normalization(x)
         x = self.activation(x)
 
         return x
