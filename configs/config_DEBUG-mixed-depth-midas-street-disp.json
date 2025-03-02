@@ -1,0 +1,73 @@
+{
+    "ckpt_path" : "/home/luiz.decker/code/DepthTasks/logs/agosto/mixed-midas-street-disp-aneal/lightning_logs/version_0/checkpoints/epoch=299-step=1272900.ckpt",
+
+    "config": "/home/luiz.decker/code/DepthTasks/configs/config_mixed-depth-midas-street-disp.json",
+    "evaluate_path": null,
+    "pretrained_path": null,
+    "expname": "setembro/DEBUG/mixed-midas-street-disp-aneal",
+    "normalize_sky": true,
+    "crop_center": true,
+    "dataset": [
+        "synthia",
+        "synscapes",
+        "virtualkitti"
+    ],
+    "augmentation": true,
+    "encoder_name": "base",
+    "num_workers": 4,
+    "target_size": [
+        256,
+        256
+    ],
+    "depth_clip": null,
+    "mask_sky": false,
+    "dataset_root": [
+        "/hadatasets/SYNTHIA-AL/",
+        "/hadatasets/synscapes",
+        "/hadatasets/virtual_kitty"
+    ],
+    "batch_size": 8,
+    "epochs": 301,
+    "split_json": [
+        "configs/synthia_splits.json",
+        "configs/synscapes_split.json",
+        "configs/virtual_kitty_splits.json"
+    ],
+    "features": [
+        [
+            "image_l"
+        ],
+        [
+            "depth_l"
+        ]
+    ],
+    "tasks": [
+        {
+            "type": "dense_regression",
+            "name": "depth",
+            "train_on_disparity": true,
+            "loss": "midas",
+            "loss_params": {
+                "disparity": true
+            },
+            "metrics": [
+                "rmse",
+                "logrmse",
+                "absrel",
+                "squaredrel",
+                "a1",
+                "a2",
+                "a3"
+            ],
+            "channels": 1,
+            "features": [
+                "depth_l"
+            ],
+            "mask_feature": null,
+            "decoder": {
+                "type": "unet",
+                "args": {}
+            }
+        }
+    ]
+}

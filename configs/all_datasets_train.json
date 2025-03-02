@@ -1,0 +1,89 @@
+{
+    "encoder_lr": 1e-5,
+    "lr": 1e-3,
+    "evaluate_path": null,
+    "pretrained_path": null,
+    "expname": "fevereiro/all_ds/artigo/aspp",
+    "normalize_sky": true,
+    "scheduler_name": "cossine_restart",
+    "start_frozen": false,
+    "pretrained_encoder": true,
+    "crop_center": true,
+    "dataset": [
+        "midair",
+        "tartanair",
+        "hypersim",
+        "synthia",
+        "synscapes",
+        "virtualkitti"
+    ],
+    "augmentation": true,
+    "encoder_name": "base",
+    "num_workers": 4,
+    "target_size": [
+        224,
+        224
+    ],
+    "depth_clip": null,
+    "mask_sky": false,
+    "dataset_root": [
+        "/hadatasets/midair/MidAir",
+        "/hadatasets/tartan-air/tartan-air/train",
+        "/hadatasets/hypersim",
+        "/hadatasets/SYNTHIA-AL/",
+        "/hadatasets/synscapes",
+        "/hadatasets/virtual_kitty"
+    ],
+    "batch_size": 200,
+    "acummulate_batches": 8,
+    "epochs": 300,
+    "split_json": [
+        "configs/midair_splits.json",
+        "configs/tartanair_scenes_splits.json",
+        "configs/hypersim_splits_nonan_noblack.json",
+        "configs/synthia_splits.json",
+        "configs/synscapes_split.json",
+        "configs/virtual_kitty_splits.json"
+    ],
+    "features": [
+        [
+            "image_l"
+        ],
+        [
+            "depth_l"
+        ]
+    ],
+    "tasks": [
+        {
+            "type": "dense_regression",
+            "name": "depth",
+            "train_on_disparity": false,
+            "loss": "midas-median",
+            "loss_params": {
+                "disparity": true,
+                "alpha": 1,
+                "sum_losses": false
+            },
+            "metrics": [
+                "absrel",
+                "a1",
+                "a2",
+                "a3"
+            ],
+            "channels": 1,
+            "features": [
+                "depth_l"
+            ],
+            "mask_feature": null,
+            "decoder": {
+                "type": "unetconcat",
+                "args": {
+                    "batchnorm": true,
+                    "use_relu": true,
+                    "pixle_shuffle": true,
+                    "aspp": true
+                }
+            }
+        }
+    ]
+}

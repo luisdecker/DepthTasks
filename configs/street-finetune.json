@@ -1,0 +1,73 @@
+{
+    "evaluate_path": null,
+    "pretrained_path": "/home/luiz.decker/code/DepthTasks/logs/outubro/generalist/generalist-unfreeze100-cossine/lightning_logs/version_2/checkpoints/epoch=299-step=874180.ckpt",
+    "expname": "novembro/street-finetune",
+    "normalize_sky": true,
+    "scheduler_name": "cossine_restart",
+    "lr": 1e-5,
+    "start_frozen": false,
+    "unfreeze_epoch": null,
+    "pretrained_encoder": false,
+    "crop_center": true,
+    "dataset": [
+        "synthia",
+        "synscapes",
+        "virtualkitti"
+    ],
+    "augmentation": true,
+    "encoder_name": "base",
+    "num_workers": 4,
+    "target_size": [
+        224,
+        224
+    ],
+    "depth_clip": null,
+    "mask_sky": false,
+    "dataset_root": [
+        "/hadatasets/SYNTHIA-AL/",
+        "/hadatasets/synscapes",
+        "/hadatasets/virtual_kitty"
+    ],
+    "batch_size": 16,
+    "epochs": 300,
+    "split_json": [
+        "configs/synthia_splits.json",
+        "configs/synscapes_split.json",
+        "configs/virtual_kitty_splits.json"
+    ],
+    "features": [
+        [
+            "image_l"
+        ],
+        [
+            "depth_l"
+        ]
+    ],
+    "tasks": [
+        {
+            "type": "dense_regression",
+            "name": "depth",
+            "train_on_disparity": false,
+            "loss": "midas",
+            "loss_params": {
+                "disparity": true,
+                "alpha": 1
+            },
+            "metrics": [
+                "absrel",
+                "a1",
+                "a2",
+                "a3"
+            ],
+            "channels": 1,
+            "features": [
+                "depth_l"
+            ],
+            "mask_feature": null,
+            "decoder": {
+                "type": "unet",
+                "args": {}
+            }
+        }
+    ]
+}
