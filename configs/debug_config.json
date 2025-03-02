@@ -1,17 +1,51 @@
 {
-    "expname": "convnext_depth_midair_scratch_DEBUG_LOGS",
-    "dataset": "midair",
-    "num_workers": 8,
+    
+    "encoder_lr": 1e-5,
+    "lr": 1e-3,
+    "evaluate_path": null,
+    "pretrained_path": null,
+    "expname": "fevereiro/debug/artigo",
+    "normalize_sky": true,
+    "scheduler_name": "cossine_restart",
+    "start_frozen": false,
+    "pretrained_encoder": true,
+    "crop_center": true,
+    "dataset": [
+        "midair",
+        "tartanair",
+        "hypersim",
+        "synthia",
+        "synscapes",
+        "virtualkitti"
+    ],
+    "augmentation": true,
+    "encoder_name": "tiny",
+    "num_workers": 4,
     "target_size": [
-        256,
-        256
+        224,
+        224
     ],
     "depth_clip": null,
     "mask_sky": false,
-    "dataset_root": "/hadatasets/midair/MidAir",
-    "batch_size": 32,
-    "epochs": 100,
-    "split_json": "configs/midair_splits.json",
+    "dataset_root": [
+        "/hadatasets/midair/MidAir",
+        "/hadatasets/tartan-air/tartan-air/train",
+        "/hadatasets/hypersim",
+        "/hadatasets/SYNTHIA-AL/",
+        "/hadatasets/synscapes",
+        "/hadatasets/virtual_kitty"
+    ],
+    "batch_size": 40,
+    "acummulate_batches": 7,
+    "epochs": 300,
+    "split_json": [
+        "configs/midair_splits.json",
+        "configs/tartanair_scenes_splits.json",
+        "configs/hypersim_splits_nonan_noblack.json",
+        "configs/synthia_splits.json",
+        "configs/synscapes_split.json",
+        "configs/virtual_kitty_splits.json"
+    ],
     "features": [
         [
             "image_l"
@@ -25,16 +59,30 @@
             "type": "dense_regression",
             "name": "depth",
             "train_on_disparity": false,
-            "loss": null,
-            "metrics": null,
+            "loss": "midas-median",
+            "loss_params": {
+                "disparity": true,
+                "alpha": 1,
+                "sum_losses": false
+            },
+            "metrics": [
+                "absrel",
+                "a1",
+                "a2",
+                "a3"
+            ],
             "channels": 1,
             "features": [
                 "depth_l"
             ],
             "mask_feature": null,
             "decoder": {
-                "type": "unet",
-                "args": {}
+                "type": "unetconcat",
+                "args": {
+                    "batchnorm": true,
+                    "use_relu": true,
+                    "pixle_shuffle": true
+                }
             }
         }
     ]

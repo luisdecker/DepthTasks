@@ -3,17 +3,16 @@
 import argparse
 import multiprocessing
 import os
-from matplotlib.font_manager import json_dump
 
-from numpy import DataSource
 import pytorch_lightning as pl
 import torch
 from pytorch_lightning.callbacks import (
     RichModelSummary,
     RichProgressBar,
     LearningRateMonitor,
+    StochasticWeightAveraging,
+    ModelCheckpoint,
 )
-
 import pandas as pd
 
 from callbacks import UnfreezeEncoder
@@ -63,6 +62,7 @@ def read_tasks(args_tasks):
             decoder_args=task["decoder"]["args"],
             train_on_disparity=task.get("train_on_disparity", False),
             loss=loss,
+            disp_metrics=task.get("disp_metrics", True),
         )
 
         task_list.append(_task)
@@ -162,10 +162,14 @@ def prepare_dataset(dataset_root, dataset, target_size=None, **args):
             shuffle=False,
             num_workers=num_workers,
         ),
-        MixedDataset(datasets=test_loaders).build_dataloader(
-            batch_size=batch_size,
-            shuffle=False,
-            num_workers=num_workers,
+        (
+            MixedDataset(datasets=test_loaders).build_dataloader(
+                batch_size=batch_size,
+                shuffle=False,
+                num_workers=num_workers,
+            )
+            if len(test_loaders) > 0
+            else None
         ),
     )
 
@@ -237,6 +241,8 @@ def train(args):
         RichModelSummary(max_depth=2),
         RichProgressBar(refresh_rate=1, leave=True),
         LearningRateMonitor(logging_interval="step"),
+        StochasticWeightAveraging(swa_lrs=[1e-5, 1e-3]),
+        ModelCheckpoint(verbose=True),
     ]
     if epoch := args.get("unfreeze_epoch", None):
         callbacks.append(UnfreezeEncoder(epoch))
@@ -244,15 +250,20 @@ def train(args):
     trainer = pl.Trainer(
         # limit_train_batches=60,
         # limit_val_batches=0,
+        log_every_n_steps=10,
         check_val_every_n_epoch=5,
-        num_sanity_val_steps=0,
+        num_sanity_val_steps=4,
         max_epochs=args["epochs"],
         accelerator="gpu",
         devices=DEVICE,
+        gradient_clip_val=0.5,
         default_root_dir=logpath,
         callbacks=callbacks,
         logger=True,
         enable_checkpointing=True,
+        num_nodes=1,
+        accumulate_grad_batches=args.get("acummulate_batches", "1"),
+        # overfit_batches=10,
         # precision="bf16",
     )
 
@@ -302,6 +313,26 @@ def test(args):
     args["features"] = [["image_l"], ["depth_l"]]
     # Test on each dataset
 
+    print("Loading KITTI validation dataset")
+    args["split_json"] = "/home/luiz.decker/code/DepthTasks/configs/kitti_eigen_val.txt"
+    args["dataset_root"] = "/hadatasets/kitti"
+    kitti_val_ds = Kitti(split="validation", **args)
+    global_metrics_kitti, sample_metrics_kitti = eval_dataset(
+        model, kitti_val_ds, max_depth=80
+    )
+    del kitti_val_ds
+    print("--->kitti", global_metrics_kitti)
+
+    print("Loading NYU validation dataset")
+    args["split_json"] = "/home/luiz.decker/code/DepthTasks/configs/nyu.json"
+    args["dataset_root"] = "/hadatasets/nyu"
+    nyu_val_ds = NYUDepthV2(split="validation", **args)
+    global_metrics_nyu, sample_metrics_nyu = eval_dataset(
+        model, nyu_val_ds, max_depth=10
+    )
+    del nyu_val_ds
+    print("--->nyu", global_metrics_nyu)
+
     print("Loading Virtual KITTI validation dataset")
     args["split_json"] = (
         "/home/luiz.decker/code/DepthTasks/configs/virtual_kitty_splits.json"
@@ -315,14 +346,6 @@ def test(args):
 
     print("--->virtual kitti", global_metrics_virtualkitti)
 
-    print("Loading NYU validation dataset")
-    args["split_json"] = "/home/luiz.decker/code/DepthTasks/configs/nyu.json"
-    args["dataset_root"] = "/hadatasets/nyu"
-    nyu_val_ds = NYUDepthV2(split="validation", **args)
-    global_metrics_nyu, sample_metrics_nyu = eval_dataset(model, nyu_val_ds)
-    del nyu_val_ds
-    print("--->nyu", global_metrics_nyu)
-
     print("Loading synscapes validation dataset")
     args["split_json"] = (
         "/home/luiz.decker/code/DepthTasks/configs/synscapes_split.json"
@@ -333,6 +356,7 @@ def test(args):
         model, synscapes_val_ds
     )
     del synscapes_val_ds
+    print("--->synscapes", global_metrics_synscapes)
 
     print("Loading HyperSim validation dataset")
     args["split_json"] = (
@@ -344,13 +368,7 @@ def test(args):
         model, hypersim_val_ds
     )
     del hypersim_val_ds
-
-    print("Loading KITTI validation dataset")
-    args["split_json"] = "/home/luiz.decker/code/DepthTasks/configs/kitti_eigen_val.txt"
-    args["dataset_root"] = "/hadatasets/kitti"
-    kitti_val_ds = Kitti(split="validation", **args)
-    global_metrics_kitti, sample_metrics_kitti = eval_dataset(model, kitti_val_ds)
-    del kitti_val_ds
+    print("--->hypersim", global_metrics_hypersim)
 
     print("Loading synthia validation dataset")
     args["split_json"] = "/home/luiz.decker/code/DepthTasks/configs/synthia_splits.json"
@@ -358,6 +376,7 @@ def test(args):
     synthia_val_ds = Synthia(split="validation", **args)
     global_metrics_synthia, sample_metrics_synthia = eval_dataset(model, synthia_val_ds)
     del synthia_val_ds
+    print("--->synthia", global_metrics_synthia)
 
     print("Loading MidAir validation dataset")
     args["split_json"] = "/home/luiz.decker/code/DepthTasks/configs/midair_splits.json"
@@ -365,6 +384,7 @@ def test(args):
     midair_val_ds = MidAir(split="validation", **args)
     global_metrics_midair, sample_metrics_midair = eval_dataset(model, midair_val_ds)
     del midair_val_ds
+    print("--->midair", global_metrics_midair)
 
     print("--->nyu", global_metrics_nyu)
     print("--->midair", global_metrics_midair)

@@ -13,13 +13,19 @@ class UpsampleConv(nn.Module):
         stride = args.get("stride", 1)
         padding = args.get("padding", 1)
 
+        self.pixel_shuffle = args.get("pixel_shuffle", False)
+
         self.batchnorm = args.get("batchnorm", False)
         if self.batchnorm:
             self.normalization = nn.BatchNorm2d(out_channels)
 
         self.activation = args.get("activation", nn.Mish)()
 
-        self.upsample = nn.UpsamplingBilinear2d(scale_factor=2)
+        self.upsample = (
+            nn.UpsamplingBilinear2d(scale_factor=2)
+            if not self.pixel_shuffle
+            else nn.PixelShuffle(upscale_factor=2)
+        )
 
         self.conv = nn.Conv2d(
             in_channels=in_channels,
@@ -29,8 +35,21 @@ class UpsampleConv(nn.Module):
             padding=padding,
         )
 
+        self.pixel_shuffle_conv = (
+            nn.Conv2d(
+                in_channels=in_channels,
+                out_channels=out_channels * 4,
+                kernel_size=1,
+                padding="same",
+            )
+            if self.pixel_shuffle
+            else None
+        )
+
     def forward(self, x):
 
+        if self.pixel_shuffle:
+            x = self.pixel_shuffle_conv(x)
         x = self.upsample(x)
         x = self.conv(x)
         if self.batchnorm:
@@ -130,3 +149,30 @@ class LayerNorm(nn.Module):
             x = (x - u) / torch.sqrt(s + self.eps)
             x = self.weight[:, None, None] * x + self.bias[:, None, None]
             return x
+
+"ASPP layer with different dilation rates"
+class ASPP(nn.Module):
+    def __init__(self, in_channels, out_channels, dilation_rates):
+        super(ASPP, self).__init__()
+        self.aspp_blocks = nn.ModuleList([
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=rate, dilation=rate, bias=False)
+            for rate in dilation_rates
+        ])
+        self.global_avg_pool = nn.Sequential(
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
+        )
+        self.conv1 = nn.Conv2d(out_channels * (len(dilation_rates) + 1), out_channels, kernel_size=1, bias=False)
+        self.bn = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        aspp_outs = [block(x) for block in self.aspp_blocks]
+        global_avg_pool_out = self.global_avg_pool(x)
+        global_avg_pool_out = F.interpolate(global_avg_pool_out, size=x.shape[2:], mode='bilinear', align_corners=False)
+        aspp_outs.append(global_avg_pool_out)
+        x = torch.cat(aspp_outs, dim=1)
+        x = self.conv1(x)
+        x = self.bn(x)
+        return self.relu(x)
+

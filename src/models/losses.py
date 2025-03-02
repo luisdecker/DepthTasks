@@ -377,7 +377,14 @@ class MidasLoss(nn.Module):
 
 
 class MidasLossMedian(nn.Module):
-    def __init__(self, alpha=0.5, scales=4, reduction="batch-based", disparity=False):
+    def __init__(
+        self,
+        alpha=0.5,
+        scales=4,
+        reduction="batch-based",
+        disparity=False,
+        sum_losses=True,
+    ):
         super().__init__()
 
         self.__data_loss = self.trimmed_mae_loss
@@ -389,6 +396,7 @@ class MidasLossMedian(nn.Module):
         self.disparity = disparity
         if self.disparity:
             print("Midas loss created with disparity!")
+        self.sum_losses = sum_losses
 
     def forward(self, prediction, target):
         if len(prediction.shape) == 4:  # remove extra dim
@@ -405,13 +413,13 @@ class MidasLossMedian(nn.Module):
         )
         target_ = MidasLossMedian.normalize_prediction_robust(target, mask)
 
-        total = self.__data_loss(self.__prediction_ssi, target_, mask)
+        data_loss = self.__data_loss(self.__prediction_ssi, target_, mask)
         if self.__alpha > 0:
-            total += self.__alpha * self.__regularization_loss(
+            reg_loss = self.__alpha * self.__regularization_loss(
                 self.__prediction_ssi, target_, mask
             )
-
-        return total
+            return (data_loss + reg_loss) if self.sum_losses else (data_loss, reg_loss)
+        return data_loss
 
     def trimmed_mae_loss(self, prediction, target, mask, trim=0.2):
         M = torch.sum(mask, (1, 2))

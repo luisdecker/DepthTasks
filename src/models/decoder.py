@@ -1,8 +1,9 @@
 "Decoders to be appended as tasks to a feature extractor"
 
+import torch
 import torch.nn as nn
 
-from models.layers import UpsampleConv, ConvNextBlock, UpscaleConvNext
+from models.layers import ASPP, UpsampleConv, ConvNextBlock, UpscaleConvNext
 
 
 def get_decoder(decoder: str):
@@ -12,6 +13,7 @@ def get_decoder(decoder: str):
         "simple": SimpleDecoder,
         "unet": UnetDecoder,
         "convnext": ConvNextDecoder,
+        "unetconcat": UnetDecoderConcat,
     }
     return available_decoders[decoder.lower()]
 
@@ -26,6 +28,8 @@ class Decoder(nn.Module):
 
         self.use_relu = args.get("use_relu", False)
         self.batchnorm = args.get("batchnorm", False)
+        self.pixel_shuffle = args.get("pixel_shuffle", False)
+        self.aspp = args.get("aspp", False)
 
 
 class SimpleDecoder(Decoder):
@@ -57,14 +61,14 @@ class SimpleDecoder(Decoder):
 class UnetDecoder(Decoder):
     """Traditional unet decoder (upsample with skip connections)"""
 
-    def __init__(self, input_channels, output_channels, skip_dimensions):
-        super().__init__(input_channels, output_channels, skip_dimensions)
+    def __init__(self, input_channels, output_channels, skip_dimensions, **args):
+        super().__init__(input_channels, output_channels, skip_dimensions, **args)
 
         assert isinstance(
             skip_dimensions, list
         ), "skip_dimensions must be a list with [(map_channels, map_factor)]"
 
-        self.activation = nn.ReLU  # TODO: Parametrize this!
+        self.activation = nn.ReLU()  # TODO: Parametrize this!
 
         self.layers = []
         # Reverse since we are decoding
@@ -105,7 +109,6 @@ class UnetDecoder(Decoder):
                         )
                     ]
                 )
-        # self.forward()
         self.layers = nn.ModuleList([nn.Sequential(*stage) for stage in self.layers])
         self.apply(self._init_weights)
 
@@ -123,6 +126,7 @@ class UnetDecoder(Decoder):
 
         for i, stage in enumerate(self.layers[:-2]):
             x = stage(x)
+            # x = torch.concat([x, encoder_partial_maps[i]])
             x = x + encoder_partial_maps[i]
 
         # Last layer does not have a skip connection
@@ -210,6 +214,116 @@ class ConvNextDecoder(Decoder):
         x = self.layers[-2](x)
         # Pointwise
         x = self.layers[-1](x)
+
+        return x
+
+    def _init_weights(self, m):
+        if isinstance(m, (nn.Conv2d, nn.Linear)):
+            nn.init.xavier_uniform_(m.weight)
+            nn.init.zeros_(m.bias)
+
+
+class UnetDecoderConcat(Decoder):
+    """Traditional unet decoder (upsample with skip connections)"""
+
+    def __init__(self, input_channels, output_channels, skip_dimensions, **args):
+        super().__init__(input_channels, output_channels, skip_dimensions, **args)
+
+        assert isinstance(
+            skip_dimensions, list
+        ), "skip_dimensions must be a list with [(map_channels, map_factor)]"
+
+        self.activation = nn.ReLU6()  # TODO: Parametrize this!
+
+        self.layers = []
+        # Reverse since we are decoding
+        skip_dimensions = list(reversed(skip_dimensions))
+
+        for i, params in enumerate(skip_dimensions):
+            channels, factor = params
+
+            # Check if we are in the last upscale (final data)
+            channels = channels if channels != -1 else 32
+
+            # Check if we are in the first upscale (from encoder)
+            in_channels = input_channels if i == 0 else skip_dimensions[i - 1][0]
+
+            # Create each decoding stage
+            stage_layers = []
+            num_upscales = factor // 2
+
+            for j in range(num_upscales):
+                stage_layers.append(
+                    UpsampleConv(
+                        in_channels,
+                        # Keep channels until dimensions are correct
+                        channels if j == num_upscales - 1 else in_channels,
+                        batchnorm=self.batchnorm,
+                        pixel_shuffle=self.pixel_shuffle,
+                    )
+                )
+            self.layers.append(stage_layers)
+
+            if i != len(skip_dimensions) - 1:
+
+                self.layers.append(
+                    [
+                        nn.Conv2d(
+                            in_channels=channels * 2,
+                            out_channels=channels,
+                            kernel_size=3,
+                            stride=1,
+                            padding="same",
+                        )
+                    ]
+                )
+
+            else:
+
+                self.layers.append(
+                    [
+                        (
+                            nn.Conv2d(
+                                in_channels=channels,
+                                out_channels=output_channels,
+                                kernel_size=7,
+                                stride=1,
+                                padding="same",
+                            )
+                            if not self.aspp
+                            else ASPP(channels, output_channels, [1, 2, 4, 8])
+                        )
+                    ]
+                )
+        self.layers = nn.ModuleList([nn.Sequential(*stage) for stage in self.layers])
+        self.apply(self._init_weights)
+
+    def forward(self, x, encoder_partial_maps):
+        """Fowards and example trought the network
+        Args:
+            x (Torch.tensor): Input data
+            encoder_partial_maps (list): Partial maps from encoder (skip connections)
+
+        Returns:
+            Torch.tensor: Output of network
+        """
+
+        encoder_partial_maps = list(reversed(encoder_partial_maps))
+
+        for i, layer in enumerate(self.layers[:-2]):
+            x = layer(x)
+            if not i % 2:
+                x = torch.concat([x, encoder_partial_maps[i // 2]], dim=1)
+            # x = x + encoder_partial_maps[i]
+
+        # Last layer does not have a skip connection
+        x = self.layers[-2](x)  # last upscale
+        x = self.layers[-1](x)  # pointwise
+        if self.use_relu:
+            x = self.activation(x)
+        # Pointwise
+        # x = x.mean(axis=1).unsqueeze(dim=1)
+        # x = x.unsqueeze(dim=1)
 
         return x
 

@@ -1,5 +1,6 @@
 """Depth estimation metrics"""
 
+from pydoc import cli
 import torch
 from torchmetrics import Metric, MeanSquaredError, MeanSquaredLogError
 from functools import partial
@@ -33,6 +34,8 @@ class AlphaError(Metric):
 
     def update(self, pred, gt):
         "Updates the internal states"
+        pred = pred[gt > 0]
+        gt = gt[gt > 0]
         thresh = torch.max((gt / pred), (pred / gt))
         sum = (thresh < (1.25**self.power)).float().sum()
         self.sum += sum
@@ -73,6 +76,8 @@ class LogRMSE(Metric):
 
     def update(self, pred, gt):
         "Updates the internal states"
+        pred = pred[gt > 0]
+        gt = gt[gt > 0]
         self.sum += torch.sqrt(((torch.log(gt) - torch.log(pred)) ** 2)).sum()
         self.n += gt.numel()
 
@@ -91,6 +96,8 @@ class AbsoluteRelative(Metric):
 
     def update(self, pred, gt):
         "Updates the internal states"
+        pred = pred[gt > 0]
+        gt = gt[gt > 0]
         self.sum += (torch.abs(gt - pred) / gt).sum()
         self.n += gt.numel()
 
@@ -109,6 +116,8 @@ class AbsoluteRelativeSquared(Metric):
 
     def update(self, pred, gt):
         "Updates the internal states"
+        pred = pred[gt > 0]
+        gt = gt[gt > 0]
         self.sum += ((gt - pred) ** 2 / gt).sum()
         self.n += gt.numel()
 
@@ -154,16 +163,25 @@ class FunctionalMetrics:
     ### SSI metrics ###
 
     @staticmethod
-    def ssi_alphaN(pred, gt, N):
+    def ssi_alphaN(pred, gt, N, clip_value=None):
         if len(pred.shape) == 4:  # remove extra dim
             pred = pred.squeeze(dim=1)
             gt = gt.squeeze(dim=1)
         mask = gt > 0
 
-        pred_aligned = MidasLossMedian.normalize_prediction_robust(pred, mask)
-        gt_aligned = MidasLossMedian.normalize_prediction_robust(gt, mask)
-        # pred_depth = 1.0 / pred_aligned
-        return FunctionalMetrics.alphaN(pred_aligned, gt_aligned, N)
+        gt_disp = gt.clone()
+        gt_disp[mask] = 1 / gt[mask]
+
+        scale, shift = compute_scale_and_shift(pred, gt_disp, mask)
+        pred_aligned = scale.view(-1, 1, 1) * pred + shift.view(-1, 1, 1)
+
+        if clip_value:
+            clip_disp = 1 / clip_value
+            pred_aligned[pred_aligned < clip_disp] = clip_disp
+
+        pred_depth = 1.0 / pred_aligned 
+
+        return FunctionalMetrics.alphaN(pred_depth, gt, N)
 
     @staticmethod
     def ssi_alpha1(pred, gt):
@@ -178,13 +196,22 @@ class FunctionalMetrics:
         return FunctionalMetrics.ssi_alphaN(pred, gt, 3)
 
     @staticmethod
-    def ssi_absrel(pred, gt):
+    def ssi_absrel(pred, gt, clip_value=None):
         if len(pred.shape) == 4:  # remove extra dim
             pred = pred.squeeze(dim=1)
             gt = gt.squeeze(dim=1)
         mask = gt > 0
 
-        pred_aligned = MidasLossMedian.normalize_prediction_robust(pred, mask)
-        gt_aligned = MidasLossMedian.normalize_prediction_robust(gt, mask)
+        gt_disp = gt.clone()
+        gt_disp[mask] = 1 / gt[mask]
+
+        scale, shift = compute_scale_and_shift(pred, gt_disp, mask)
+        pred_aligned = scale.view(-1, 1, 1) * pred + shift.view(-1, 1, 1)
+
+        if clip_value:
+            clip_disp = 1 / clip_value
+            pred_aligned[pred_aligned < clip_disp] = clip_disp
+
+        pred_depth = 1.0 / pred_aligned 
         # pred_depth = 1.0 / pred_aligned
-        return FunctionalMetrics.absrel(pred_aligned, gt_aligned)
+        return FunctionalMetrics.absrel(pred_depth, gt)

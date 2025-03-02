@@ -1,9 +1,17 @@
 "Definition a abstract model and implementation of common model functions"
 
-from tabnanny import verbose
+from models.training_utils import (
+    class_loss_preproc,
+    masked_loss,
+    masked_metrics,
+    prepare_to_metrics,
+)
+
 from pytorch_lightning import LightningModule
 import torch
 import torchmetrics
+import matplotlib.pyplot as plt
+import torchvision.utils as vutils
 
 
 class Model(LightningModule):
@@ -37,6 +45,7 @@ class Model(LightningModule):
         self.pretrained_encoder = args.get("pretrained_encoder", False) | args.get(
             "start_frozen", False
         )
+        self.encoder_lr = args.get("encoder_lr")
 
     def expand_shape(self, x):
         """Expands all tensors in the list x to have the same shape in the
@@ -105,7 +114,7 @@ class Model(LightningModule):
                         metric.reset()
             self.log_dict(_metrics, sync_dist=True)
 
-    def on_training_epoch_end(self):
+    def on_train_epoch_end(self):
         """"""
 
         with torch.no_grad():
@@ -113,7 +122,19 @@ class Model(LightningModule):
             _metrics["train_loss_epoch"] = self.train_loss.compute()
             self.train_loss.reset()
 
-        self.log_dict(_metrics, logger=True, prog_bar=True, sync_dist=True)
+            self.log_dict(_metrics, logger=True, prog_bar=True, sync_dist=True)
+
+            # Log some images
+            dataloader = self.trainer.val_dataloaders
+            if isinstance(dataloader, list):
+                dataloader = dataloader[0]
+            dataset = dataloader.dataset
+            samples = (dataset[0], dataset[len(dataset) // 2], dataset[-1])
+            for i, sample in enumerate(samples):
+                image, gt = sample
+                gt = gt[0]
+                pred = self.forward(image.unsqueeze(0).float().to(self.device))[0, 0]
+                self.plot_images(f"Sample {i}", gt, pred, self.current_epoch)
 
     def on_validation_epoch_end(self):
         """"""
@@ -134,7 +155,20 @@ class Model(LightningModule):
 
     def configure_optimizers(self):
 
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+        if self.encoder_lr:
+            print(f"Setting encoder lr to {self.encoder_lr}")
+            param_groups = []
+            param_groups.append({"params": self.decoders.parameters()})
+            param_groups.append(
+                {
+                    "params": self.encoder.parameters(),
+                    "lr": self.encoder_lr,
+                    "name": "encoder",
+                }
+            )
+            optimizer = torch.optim.AdamW(param_groups, lr=self.lr)
+        else:
+            optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
 
         scheduler = {
             "cossine": torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -150,7 +184,9 @@ class Model(LightningModule):
             "frequency": 1,
         }
 
-        return {"optimizer": optimizer, "lr_scheduler": lr_scheduler_config}
+        optimizers = [optimizer]
+        lr_schedulers = [lr_scheduler_config]
+        return optimizers, lr_schedulers
 
     def compute_loss(self, pred, true):
         """Computes loss for all the tasks"""
@@ -159,31 +195,25 @@ class Model(LightningModule):
         total_loss = 0
         for task_index, task in enumerate(self.tasks):
             label_idx = [self.features[1].index(feat) for feat in task.features]
+
             # Gets data from the specified task
             task_pred = pred[:, [task_index], ...]
+
             # Remove any expanded data
             task_pred = task_pred[:, :, : task.channels, ...]
             task_true = true[:, label_idx, ...]
 
-            # if task.train_on_disparity:
-            #     # Gt converted to disparity on loss
-            #     task_true = 1.0 / task_true
             has_nans = task_true.isnan().any()
             if task.mask_feature or has_nans:
-                feat_mask = torch.ones_like(task_true).bool()
-                nan_mask = ~task_true.isnan()
-                if task.mask_feature:
-                    feat_mask = true[:, self.features[1].index(task.mask_feature), ...]
-                    feat_mask = torch.unsqueeze(feat_mask, 1)
-                    feat_mask = feat_mask / 255
-                    feat_mask = feat_mask.bool()
 
-                mask = nan_mask & feat_mask
-
-                batch_loss = 0
-                for m, t, p in zip(mask, task_true, task_pred):
-                    batch_loss += self.metrics[task.name]["loss"](p[m], t[m])
-                batch_loss /= true.shape[0]
+                batch_loss = masked_loss(
+                    task_pred,
+                    task_true,
+                    true,
+                    self.features[1].index(task.mask_feature),
+                    task,
+                    self.metrics[task.name]["loss"],
+                )
                 total_loss += batch_loss
                 continue
 
@@ -191,18 +221,22 @@ class Model(LightningModule):
             task_true = task_true.squeeze(dim=1)
 
             if hasattr(task, "num_classes"):
-                assert task_true.max() <= (
-                    task.num_classes
-                ), "class gt larger than number of classes"
+                task_pred, task_true = class_loss_preproc(task, task_pred, task_true)
 
-                task_pred = task_pred.swapaxes(-1, -3)
-                task_pred = task_pred.reshape(-1, task.num_classes)
-                task_true = task_true.flatten().long()
-
-                ignore_mask = task_true != -1
-                task_pred = task_pred[ignore_mask]
-                task_true = task_true[ignore_mask]
-
+            loss = self.metrics[task.name]["loss"](task_pred, task_true)
+            if isinstance(loss, tuple):
+                data_loss, reg_loss = loss
+                self.log(
+                    "train_step_loss/data_loss",
+                    data_loss,
+                    prog_bar=True,
+                    sync_dist=True,
+                )
+                self.log(
+                    "train_step_loss/reg_loss", reg_loss, prog_bar=True, sync_dist=True
+                )
+                total_loss += data_loss + reg_loss
+                continue
             total_loss += self.metrics[task.name]["loss"](task_pred, task_true)
 
         return total_loss
@@ -224,48 +258,56 @@ class Model(LightningModule):
 
                 has_nans = task_true.isnan().any()
                 if task.mask_feature or has_nans:
-                    nan_mask = ~task_true.isnan()
-                    feat_mask = torch.ones_like(task_true).bool()
-                    if task.mask_feature:
-                        feat_mask = true[
-                            :, self.features[1].index(task.mask_feature), ...
-                        ]
-                        feat_mask = torch.unsqueeze(mask, 1)
-                        feat_mask = feat_mask / 255
-                        feat_mask = feat_mask.bool()
-
-                    mask = nan_mask & feat_mask
-
-                    _metrics = {}
-                    for metric_name, metric in self.metrics[task.name].items():
-                        batch_metric = 0
-                        for t, p, m in zip(task_true, task_pred, mask):
-                            batch_metric += metric(p[m], t[m])
-                        batch_metric /= task_true.shape[0]
-                        _metrics[f"{task.name}_{metric_name}"] = batch_metric
-                    metrics.update(_metrics)
-
+                    metrics.update(
+                        masked_metrics(
+                            task_pred,
+                            task_true,
+                            true,
+                            self.features[1].index(task.mask_feature),
+                            task,
+                            self.metrics[task.name].items(),
+                        )
+                    )
                     continue
 
                 task_metrics = self.metrics[task.name]
                 _metrics = {}
                 for metric_name, metric in task_metrics.items():
+                    metric_true = task_true.clone()
+                    metric_pred = task_pred.clone()
+
                     if metric_name == "loss" and hasattr(task, "num_classes"):
                         _metrics[metric_name] = metric(
-                            task_pred.squeeze(dim=1)
+                            metric_pred.squeeze(dim=1)
                             .swapaxes(-1, -3)
                             .reshape(-1, task.num_classes)
                             .float(),
-                            task_true.squeeze(dim=1).flatten().long(),
+                            metric_true.squeeze(dim=1).flatten().long(),
                         )
                         continue
 
+                    if task.disp_metrics and not metric_name == "loss":
+                        metric_pred, metric_true = prepare_to_metrics(
+                            metric_pred, metric_true
+                        )
+
+                    if metric_name == "loss":
+                        computed_loss = metric(
+                            metric_pred.squeeze(dim=1), metric_true.squeeze(dim=1)
+                        )
+                        if isinstance(computed_loss, tuple):
+                            _metrics["data_loss"] = computed_loss[0]
+                            _metrics["reg_loss"] = computed_loss[1]
+                            _metrics["loss"] = computed_loss[0] + computed_loss[1]
+                            continue
+                        _metrics["loss"] = computed_loss
+                        continue
+
                     _metrics[metric_name] = metric(
-                        task_pred.squeeze(dim=1), task_true.squeeze(dim=1)
+                        metric_pred.squeeze(dim=1), metric_true.squeeze(dim=1)
                     )
 
-                for metric in _metrics:
-                    value = _metrics[metric]
+                for metric, value in _metrics.items():
                     name = f"{task.name}_{metric}"
                     metrics[name] = value
 
@@ -275,3 +317,21 @@ class Model(LightningModule):
         self = self.cuda(gpu)
         [decoder.cuda(gpu) for decoder in self.decoders]
         return self
+
+    def plot_images(self, label, gt, pred, step):
+
+        gt = gt.cpu().numpy()
+        gt = 1 / gt
+        gt = (gt - gt.min()) / (gt.max() - gt.min())
+        gt = plt.cm.turbo_r(gt[0])[..., :3]
+        gt = torch.from_numpy(gt).permute(2, 0, 1).float()
+
+        pred = pred[0].cpu().numpy()
+        pred = (pred - pred.min()) / (pred.max() - pred.min())
+        pred = plt.cm.turbo_r(pred)[..., :3]
+        pred = torch.from_numpy(pred).permute(2, 0, 1).float()
+
+        grid = vutils.make_grid([gt, pred], nrow=2, padding=5)
+
+        tb = self.logger.experiment
+        tb.add_image(f"GT x Pred /({label})", grid, step)

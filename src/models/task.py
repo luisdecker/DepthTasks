@@ -32,6 +32,8 @@ class Task:
 
         self.decoder_args = args.get("decoder_args", {})
 
+        self.disp_metrics = args.get("disp_metrics", True)
+
     def compute_metric(self, pred, true):
         results = {}
         for metric in self.metric:

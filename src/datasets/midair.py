@@ -66,18 +66,10 @@ def get_data_from_id(id, climate_root, trajec):
     "Get the path from all the data from a id"
 
     return {
-        "depth_l": os.path.join(
-            climate_root, "stereo_disparity", trajec, f"{id}.PNG"
-        ),
-        "image_l": os.path.join(
-            climate_root, "color_left", trajec, f"{id}.JPEG"
-        ),
-        "image_r": os.path.join(
-            climate_root, "color_right", trajec, f"{id}.JPEG"
-        ),
-        "seg_l": os.path.join(
-            climate_root, "segmentation", trajec, f"{id}.PNG"
-        ),
+        "depth_l": os.path.join(climate_root, "depth", trajec, f"{id}.PNG"),
+        "image_l": os.path.join(climate_root, "color_left", trajec, f"{id}.JPEG"),
+        "image_r": os.path.join(climate_root, "color_right", trajec, f"{id}.JPEG"),
+        "seg_l": os.path.join(climate_root, "segmentation", trajec, f"{id}.PNG"),
     }
 
 
@@ -120,9 +112,7 @@ class MidAir(Dataset):
                     ids = get_path_ids(climate_root, trajec)
 
                     for id in ids:
-                        all_paths_id = get_data_from_id(
-                            id, climate_root, trajec
-                        )
+                        all_paths_id = get_data_from_id(id, climate_root, trajec)
                         file_list.append(all_paths_id)
         return file_list
 
@@ -134,10 +124,10 @@ class MidAir(Dataset):
 
         if feature.startswith("depth"):
             img = np.asarray(img, np.uint16)
-            img.dtype = np.float16
-            img = 255 / img
+            img = img.astype(np.float16)
+            # img = 255 / img
             if self.normalize_sky:
-                img[img == 32640] = np.max(img[img != 32640])
+                img[img == 31740] = np.max(img[img != 31740])
 
             img = Image.fromarray(img.astype(np.float32))
         if feature.startswith("seg"):

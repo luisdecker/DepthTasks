@@ -18,7 +18,14 @@ def normalize_depth(depth_map):
 
 
 def eval_dataset(
-    network, dataset, batch_size=1, functional=True, normalize=True, disparity=True, invert_pred = True
+    network,
+    dataset,
+    batch_size=1,
+    functional=True,
+    normalize=True,
+    disparity=True,
+    invert_pred=False,
+    max_depth=None,
 ):
     """Evaluates a network in all elements of a dataset. Returns the global
     metrics and a list with the metrics by sample"""
@@ -67,7 +74,7 @@ def eval_dataset(
                     image, gt = next(loader)
                     image = image.to(network.device)
                     gt = gt.to(network.device)[:, 0, 0, ...]
-
+                    gt_depth = gt.clone()
                     #                   all,task,feat,all
                     pred = network(image)[:, 0, 0, ...]
 
@@ -99,7 +106,10 @@ def eval_dataset(
                         # Compute each metric for the sample
                         for metric_name, metric in metrics.items():
                             if metric_name.startswith(("loss", "ssi")):
-                                sample_metrics[metric_name] = metric(pred, gt)
+                                if metric_name.startswith("ssi"):
+                                    sample_metrics[metric_name] = metric(pred, gt_depth)
+                                else:
+                                    sample_metrics[metric_name] = metric(pred, gt)
                             else:
                                 sample_metrics[metric_name] = metric(
                                     valid_pred, valid_gt

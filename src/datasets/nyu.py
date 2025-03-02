@@ -76,6 +76,8 @@ class NYUDepthV2:
         depths = np.transpose(depths, axes=(0, 2, 1))
         depths_resized = []
         for depth in depths:
+            if self.crop_center:
+                depth = _crop_center(depth)
             depth = Image.fromarray(depth).convert("F")
             depths_resized.append(
                 np.array(depth.resize(self.target_size, Image.BICUBIC))
